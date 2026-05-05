@@ -1,0 +1,99 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nisha-sentinel"
+version = "0.1.0"
+description = "NISHA Agent Management System - Centralized control for distributed agent networks"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+dependencies = [
+    # Web framework
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+
+    # Database
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30.0",
+    "alembic>=1.14.0",
+
+    # Cache
+    "redis[hiredis]>=5.2.0",
+
+    # Validation & serialization
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.6.0",
+
+    # Security
+    "python-jose[cryptography]>=3.3.0",
+    "passlib[bcrypt]>=1.7.4",
+
+    # HTTP client (for master communication)
+    "httpx>=0.28.0",
+
+    # Utilities
+    "structlog>=24.4.0",
+    "python-dotenv>=1.0.0",
+
+    # AI / ML
+    "numpy>=1.26.0",
+    "opencv-python-headless",
+    "torch>=2.0.0",
+    "ultralytics>=8.0.0",
+
+    # System Monitor
+    "psutil>=5.9.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+    "httpx>=0.28.0",
+    "ruff>=0.8.0",
+    "mypy>=1.13.0",
+    "pre-commit>=4.0.0",
+]
+load-test = [
+    "locust>=2.32.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nisha"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+markers = [
+    "unit: Unit tests (no external deps)",
+    "integration: Integration tests (require DB/Redis)",
+    "slow: Slow tests",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "SIM", "RUF"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Path", "fastapi.Security", "fastapi.Header", "fastapi.Body"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["redis.*", "jose.*"]
+ignore_missing_imports = true

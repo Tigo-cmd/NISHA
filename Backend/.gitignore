@@ -1,0 +1,127 @@
+# NISHA Backend - Git Ignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+.coverage.*
+coverage.xml
+*.cover
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.ropeproject
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+logs/
+log/
+
+# Migration files (versions are tracked, but backups aren't)
+migrations/versions/.backup/
+
+# Model files (AI/ML) - large binary files, not in git
+ai/models/*.pt
+ai/models/*.onnx
+ai/models/*.pkl
+ai/__pycache__/
+ai/*/__pycache__/
+ai/*/*/__pycache__/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# OS
+.DS_Store
+Thumbs.db
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+
+# Uploads/media
+uploads/
+media/
+static/uploads/
+static/media/
+
+# Jupyter
+.ipynb_checkpoints
+*.ipynb
+
+# Sphinx docs
+docs/_build/
+docs/build/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# pyenv
+.python-version
+
+# pip cache
+pip-log.txt
+pip-delete-this-directory.txt
+
+# poetry
+poetry.lock
+.poetry/
+
+# Mac
+.AppleDouble
+.LSOverride
+
+# Windows
+Desktop.ini
+$RECYCLE.BIN/

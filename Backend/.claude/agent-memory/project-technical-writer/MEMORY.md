@@ -1,0 +1,2 @@
+- [User Profile](user_profile.md) — Senior engineer with 15+ years experience.
+- [Audio Initialization](nisha_audio_init.md) — Implementation of Phase 1 & 2 Audio System (2026-04-18).
