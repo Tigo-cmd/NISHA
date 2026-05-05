@@ -36,17 +36,55 @@ class AgentWebSocketServer:
     async def handle_client(self, websocket: ServerConnection):
         """Main handler for a connected agent."""
         agent_id = "UNKNOWN"
+        agent_mode = "UNKNOWN"
         print(f"[DEBUG] New connection received on port {self.port}")
         try:
             async for message in websocket:
-                # 1. INITIAL HANDSHAKE (TEXT)
+                # 1. INITIAL HANDSHAKE (TEXT/JSON)
                 if isinstance(message, str):
-                    agent_id = message.strip()
-                    self.active_agents[agent_id] = websocket
-                    print(f"[DEBUG] Handshake successful: {agent_id}")
-                    continue
+                    try:
+                        # Try to parse as JSON handshake from mobile/modern clients
+                        handshake = json.loads(message)
+                        if handshake.get("type") == "HANDSHAKE":
+                            agent_id = handshake.get("agent_id", "UNKNOWN")
+                            agent_mode = handshake.get("mode", "AGENT")
+                            self.active_agents[agent_id] = websocket
+                            print(f"[DEBUG] Handshake successful: {agent_id} (mode: {agent_mode})")
+                            # Initialize agent stats
+                            if agent_id not in self.metrics_store.agent_stats:
+                                self.metrics_store.agent_stats[agent_id] = {
+                                    "agent_id": agent_id,
+                                    "mode": agent_mode,
+                                    "device_info": handshake.get("device_info", {}),
+                                }
+                            continue
+                    except json.JSONDecodeError:
+                        # Fallback to simple string ID for legacy clients
+                        agent_id = message.strip()
+                        agent_mode = "LEGACY"
+                        self.active_agents[agent_id] = websocket
+                        print(f"[DEBUG] Legacy handshake: {agent_id}")
+                        if agent_id not in self.metrics_store.agent_stats:
+                            self.metrics_store.agent_stats[agent_id] = {"agent_id": agent_id, "mode": "LEGACY"}
+                        continue
 
-                # 2. BINARY FRAMES
+                # 2. HEARTBEAT MESSAGE (TEXT/JSON)
+                if isinstance(message, str):
+                    try:
+                        heartbeat = json.loads(message)
+                        if heartbeat.get("type") == "HEARTBEAT":
+                            agent_id = heartbeat.get("agent_id", agent_id)
+                            if agent_id in self.metrics_store.agent_stats:
+                                stats = self.metrics_store.agent_stats[agent_id]
+                                stats["last_seen"] = time.time()
+                                stats["battery"] = heartbeat.get("battery", 100)
+                                stats["rssi"] = heartbeat.get("rssi", -65)
+                            print(f"[DEBUG] Heartbeat from {agent_id}: battery={heartbeat.get('battery')}%, rssi={heartbeat.get('rssi')}")
+                            continue
+                    except json.JSONDecodeError:
+                        pass
+
+                # 3. BINARY FRAMES
                 if not isinstance(message, (bytes, bytearray, memoryview)):
                     continue
 
@@ -63,7 +101,7 @@ class AgentWebSocketServer:
                     meta_len = header_data[8]
                     
                     if agent_id not in self.metrics_store.agent_stats:
-                        self.metrics_store.agent_stats[agent_id] = {"agent_id": agent_id}
+                        self.metrics_store.agent_stats[agent_id] = {"agent_id": agent_id, "mode": agent_mode}
                     
                     stats = self.metrics_store.agent_stats[agent_id]
                     stats["last_seen"] = time.time()

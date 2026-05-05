@@ -15,8 +15,8 @@ import {
 const toast = (props: any) => console.log('Toast:', props);
 
 // Base URL for API calls
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
-const API_KEY = process.env.NEXT_PUBLIC_API_KEY || 'change-me-to-a-secure-api-key';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8081';
+const API_KEY = process.env.NEXT_PUBLIC_API_KEY || 'nisha_master_key_2024_secure';
 
 // Helper for authenticated fetch
 const fetchWithAuth = async (url: string, options: RequestInit = {}) => {

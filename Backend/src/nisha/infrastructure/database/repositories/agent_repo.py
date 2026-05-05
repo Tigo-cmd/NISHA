@@ -18,6 +18,15 @@ logger = logging.getLogger(__name__)
 
 def _model_to_domain(row: AgentModel) -> Agent:
     metrics_data = (row.metadata_ or {}).get("metrics", {})
+    
+    # Robust Decimal to float conversion for GPS
+    def to_float(val):
+        if val is None: return None
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            return None
+
     return Agent(
         agent_id=row.agent_id,
         short_id=row.short_id,
@@ -26,8 +35,8 @@ def _model_to_domain(row: AgentModel) -> Agent:
         capabilities=row.capabilities or {},
         config=row.config or {},
         location_zone=row.location_zone,
-        gps_lat=float(row.gps_lat) if row.gps_lat is not None else None,
-        gps_lng=float(row.gps_lng) if row.gps_lng is not None else None,
+        gps_lat=to_float(row.gps_lat),
+        gps_lng=to_float(row.gps_lng),
         firmware_version=row.firmware_version,
         last_heartbeat=row.last_heartbeat,
         metrics=AgentMetrics(**metrics_data) if metrics_data else AgentMetrics(),
@@ -35,6 +44,7 @@ def _model_to_domain(row: AgentModel) -> Agent:
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
+
 
 
 def _domain_to_dict(agent: Agent) -> dict[str, Any]:
