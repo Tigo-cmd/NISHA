@@ -4,16 +4,19 @@
  */
 
 #include <WiFi.h>
+#include <ESPmDNS.h>
 #include <WebSocketsClient.h> // Ensure you have the "WebSockets" library by Markus Sattler
+
 #include <HTTPClient.h>
 #include "driver/i2s.h"
 
 // --- CONFIGURATION ---
 const char* ssid = "Tigonuel";
 const char* password = "        ";
-const char* backend_url = "http://10.249.27.48:8081/api/v1/agents";
-const char* master_ws_url = "10.249.27.48"; // Master IP
+const char* backend_url = "http://Tigo.local:8081/api/v1/agents";
+const char* master_ws_url = "Tigo.local"; // Master Hostname
 const int master_ws_port = 8082;            // Master Telemetry Port
+
 const char* api_key = "nisha_master_key_2024_secure";
 const char* agent_id = "AUDIO-NODE-01";
 
@@ -148,7 +151,14 @@ void setup() {
     }
     Serial.println("\nWiFi connected");
 
+    if (!MDNS.begin("audio-node-01")) {
+        Serial.println("Error setting up MDNS responder!");
+    } else {
+        Serial.println("mDNS responder started: audio-node-01.local");
+    }
+
     registerWithBackend();
+
     setupI2S();
 
     webSocket.begin(master_ws_url, master_ws_port, "/ws");
