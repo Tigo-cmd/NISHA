@@ -1,0 +1,282 @@
+"use client";
+
+import { useEffect, useRef } from "react";
+import { useStore } from "@/store/useStore";
+import { apiService } from "@/services/apiService";
+import { websocketService } from "@/services/websocketService";
+import { WebSocketMessageType, Agent as StoreAgent, Master as StoreMaster } from "@/types";
+
+// Maps backend Agent model to frontend StoreAgent model
+const mapBackendAgent = (backendAgent: any): StoreAgent => {
+  return {
+    id: backendAgent.agent_id || backendAgent.short_id,
+    name: backendAgent.short_id || "Unknown",
+    masterId: backendAgent.master_id || "",
+    status: (backendAgent.status || "offline").toLowerCase() as any,
+    battery: backendAgent.config?.battery_level || 100, // Mock fallback
+    signal: backendAgent.config?.signal_strength || -50,
+    zone: backendAgent.location_zone || "Unassigned",
+    hardware: "ESP32",
+    firmware: backendAgent.firmware_version || "v1.0.0",
+    capabilities: Object.keys(backendAgent.capabilities || {}).filter(k => backendAgent.capabilities[k]) as StoreAgent['capabilities'],
+    lastSeen: backendAgent.last_heartbeat ? new Date(backendAgent.last_heartbeat).toLocaleString() : "Never",
+    cpuUsage: backendAgent.config?.cpu_usage_percent || 0,
+    ramUsage: backendAgent.config?.free_heap_bytes ? 2.5 : 0, // Mock formatting
+    temp: backendAgent.config?.temperature_c || 0,
+    audioLevel: backendAgent.config?.current_db || 0,
+    motionDetected: backendAgent.config?.motion_detected || false,
+    position: (backendAgent.gps_lat && backendAgent.gps_lng) ? {
+      lat: backendAgent.gps_lat,
+      lng: backendAgent.gps_lng
+    } : undefined
+  };
+};
+
+// Maps backend Master model to frontend StoreMaster model
+const mapBackendMaster = (backendMaster: any): StoreMaster => {
+  return {
+    id: backendMaster.master_id,
+    name: backendMaster.name || backendMaster.master_id,
+    status: (backendMaster.status || "offline").toLowerCase() as any,
+    agentCount: backendMaster.current_agent_count || 0,
+    ip: backendMaster.ip_address || "0.0.0.0",
+    uptime: backendMaster.last_seen ? new Date(backendMaster.last_seen).toLocaleString() : "Unknown",
+    cpuUsage: 10, // Mock fallback
+    ramUsage: 15,
+    gps_lat: backendMaster.gps_lat, gps_lng: backendMaster.gps_lng
+  };
+};
+
+export function DataLoader() {
+  const setAgents = useStore((state) => state.setAgents);
+  const setMasters = useStore((state) => state.setMasters);
+  const setSystemStatus = useStore((state) => state.setSystemStatus);
+  const setAlerts = useStore((state) => state.setAlerts);
+  const setSecurityEvents = useStore((state) => state.setSecurityEvents);
+  const updateAgent = useStore((state) => state.updateAgent);
+  const addAlert = useStore((state) => state.addAlert);
+  const addSecurityEvent = useStore((state) => state.addSecurityEvent);
+  const setThreatLevel = useStore((state) => state.setThreatLevel);
+  const addTelemetryLog = useStore((state) => state.addTelemetryLog);
+
+  const pollInterval = useRef<NodeJS.Timeout | undefined>(undefined);
+
+  const fetchData = async () => {
+    try {
+      const [agentsData, mastersData, systemStatus, audioEvents] = await Promise.all([
+        apiService.getAgents(),
+        apiService.getMasters(),
+        apiService.getSystemStatus().catch(() => null),
+        apiService.getAudioEvents(20).catch(() => [])
+      ]);
+
+      if (agentsData && agentsData.length > 0) {
+        const currentAgents = useStore.getState().agents;
+        const mergedAgents = agentsData.map((backendAgent: any) => {
+          const mapped = mapBackendAgent(backendAgent);
+          const current = currentAgents.find(a => a.id === mapped.id);
+          
+          // Smart Merge: Don't downgrade to 'offline' if we think they are 'active' 
+          // and we've seen them very recently (within 45s) via WebSockets.
+          if (current && current.status === 'active' && mapped.status === 'offline') {
+            const lastSeenDate = new Date(current.lastSeen);
+            const now = new Date();
+            if (now.getTime() - lastSeenDate.getTime() < 45000) {
+              return { ...mapped, status: 'active', lastSeen: current.lastSeen };
+            }
+          }
+          return mapped;
+        });
+        setAgents(mergedAgents);
+      }
+
+      if (mastersData && mastersData.length > 0) {
+        setMasters(mastersData.map(mapBackendMaster));
+      }
+
+      if (systemStatus) {
+        setSystemStatus(systemStatus);
+      }
+
+      if (audioEvents && audioEvents.length > 0) {
+        // Map backend audio events to frontend Alerts
+        const alerts = audioEvents.map((evt: any) => ({
+          id: evt.event_id,
+          type: "AUDIO" as const,
+          severity: (evt.priority === "1" ? "critical" : evt.priority === "2" ? "high" : "medium") as "critical" | "high" | "medium",
+          description: `Audio Event: ${evt.class_name.toUpperCase()}`,
+          timestamp: new Date(evt.timestamp).toLocaleString(),
+          agentId: evt.agent_id,
+          acknowledged: evt.confirmed || false
+        }));
+        setAlerts(alerts);
+
+        // Map backend audio events to frontend SecurityEvents
+        const securityEvents = audioEvents.map((evt: any) => ({
+          id: evt.event_id,
+          type: "Audio Trigger" as const,
+          severity: (evt.priority === "1" ? "critical" : evt.priority === "2" ? "high" : "medium") as "critical" | "high" | "medium",
+          description: `Audio Event: ${evt.class_name.toUpperCase()} (Confidence: ${(evt.confidence * 100).toFixed(1)}%)`,
+          timestamp: new Date(evt.timestamp).toLocaleString(),
+          zone: evt.location_zone || "Unknown",
+          agentId: evt.agent_id
+        }));
+        setSecurityEvents(securityEvents);
+      }
+    } catch (error) {
+      console.error("DataLoader error fetching live data:", error);
+    }
+  };
+
+  useEffect(() => {
+    // Initial fetch
+    fetchData();
+
+    // Poll every 30 seconds for full sync (fallback for WebSockets)
+    pollInterval.current = setInterval(fetchData, 30000);
+
+    // WebSocket Connection
+    let WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8080/api/v1/ws/realtime";
+    if (!process.env.NEXT_PUBLIC_WS_URL && !WS_URL.includes('token=')) {
+      WS_URL += "?token=NISHA-FRONTEND-DEV";
+    }
+    websocketService.connect(WS_URL);
+
+    // Subscriptions
+    const unsubNodeData = websocketService.subscribe(WebSocketMessageType.NODE_DATA, (data: any) => {
+      // API_INTEGRATION_GUIDE.md: "Payload: Current battery, signal strength (dBm), CPU usage, and GPS coordinates."
+      if (data && data.agent_id) {
+        const hasGps = data.gps_lat !== undefined && data.gps_lat !== null && data.gps_lng !== undefined && data.gps_lng !== null;
+        const gpsFragment = hasGps ? `LAT:${data.gps_lat.toFixed(5)} LNG:${data.gps_lng.toFixed(5)}` : "GPS:STABLE";
+        
+        addTelemetryLog({
+          id: `tel-${Date.now()}-${data.agent_id}`,
+          agentId: data.agent_id,
+          type: "TELEMETRY",
+          description: `Telemetry Received: ${gpsFragment} | BAT:${data.battery ?? 100}% SIG:${data.signal_strength ?? -50}dB`,
+          timestamp: new Date().toISOString()
+        });
+
+        const updates: Partial<StoreAgent> = {
+          battery: data.battery,
+          signal: data.signal_strength,
+          cpuUsage: data.cpu_usage,
+          masterId: data.master_id,
+          audioLevel: data.audio_level,
+          lastSeen: new Date().toLocaleString(),
+          // Force active: If we are receiving telemetry, the agent is alive.
+          status: 'active'
+        };
+
+        if (hasGps) {
+          updates.position = { lat: data.gps_lat, lng: data.gps_lng };
+        }
+
+        updateAgent(data.agent_id, updates);
+      }
+    });
+
+    const unsubAlert = websocketService.subscribe(WebSocketMessageType.THRESHOLD_ALERT, (data: any) => {
+      // API_INTEGRATION_GUIDE.md: "Payload: Alert ID, severity (critical/high), description, timestamp, agent ID."
+      if (data) {
+        addAlert({
+          id: data.alert_id || Date.now().toString(),
+          type: (data.event_type || data.type || "SYSTEM") as any,
+          severity: data.severity || "medium",
+          description: data.description || "Security Event Detected",
+          timestamp: data.timestamp ? new Date(data.timestamp).toLocaleString() : new Date().toLocaleString(),
+          agentId: data.agent_id || "Unknown",
+          acknowledged: false
+        });
+
+        addSecurityEvent({
+          id: data.alert_id || Date.now().toString(),
+          type: "System Anomaly",
+          severity: data.severity || "medium",
+          description: data.description || "Security Event Detected",
+          timestamp: data.timestamp ? new Date(data.timestamp).toLocaleString() : new Date().toLocaleString(),
+          zone: "Unknown",
+          agentId: data.agent_id || "Unknown"
+        });
+
+        if (data.severity === 'critical') setThreatLevel('critical');
+        else if (data.severity === 'high' && useStore.getState().threatLevel !== 'critical') setThreatLevel('high');
+      }
+    });
+
+    const unsubSystem = websocketService.subscribe(WebSocketMessageType.SYSTEM_STATUS, (data: any) => {
+      if (data) {
+        setSystemStatus(data);
+      }
+    });
+
+    const unsubNewClip = websocketService.subscribe(WebSocketMessageType.NEW_CLIP, (data: any) => {
+      console.log("[DataLoader] New clip received, triggering refresh:", data);
+      
+      // Push to Terminal
+      addTelemetryLog({
+        id: `clip-${Date.now()}-${data.agent_id}`,
+        agentId: data.agent_id,
+        type: data.media_type === "audio" ? "AUDIO" : "VIDEO",
+        description: `New ${data.media_type.toUpperCase()} Clip Captured & Persisted (10s)`,
+        timestamp: new Date().toISOString()
+      });
+
+      fetchData();
+    });
+
+    const unsubAgentStatus = websocketService.subscribe(WebSocketMessageType.AGENT_STATUS, (data: any) => {
+      console.log("[DataLoader] Agent status changed:", data);
+      if (data && data.agent_id) {
+        const newStatus = (data.payload?.new_status || data.payload?.status || "offline").toLowerCase();
+        
+        updateAgent(data.agent_id, {
+          status: newStatus as any,
+          lastSeen: new Date().toLocaleString()
+        });
+
+        addTelemetryLog({
+          id: `status-${Date.now()}-${data.agent_id}`,
+          agentId: data.agent_id,
+          type: "SYSTEM",
+          description: `Status Changed: ${newStatus.toUpperCase()} (${data.payload?.reason || "Heartbeat"})`,
+          timestamp: new Date().toISOString()
+        });
+      }
+    });
+
+    const unsubMasterStatus = websocketService.subscribe(WebSocketMessageType.MASTER_STATUS, (data: any) => {
+      console.log("[DataLoader] Master status changed:", data);
+      if (data && data.master_id) {
+        const newStatus = (data.payload?.status || "offline").toLowerCase();
+        
+        setMasters(useStore.getState().masters.map(m => 
+          m.id === data.master_id ? { ...m, status: newStatus as any } : m
+        ));
+
+        addTelemetryLog({
+          id: `master-${Date.now()}-${data.master_id}`,
+          agentId: "SYSTEM",
+          type: "SYSTEM",
+          description: `Master ${data.payload?.name || data.master_id} is now ${newStatus.toUpperCase()}`,
+          timestamp: new Date().toISOString()
+        });
+      }
+    });
+
+    return () => {
+      if (pollInterval.current) {
+        clearInterval(pollInterval.current);
+      }
+      unsubNodeData();
+      unsubAlert();
+      unsubSystem();
+      unsubNewClip();
+      unsubAgentStatus();
+      unsubMasterStatus();
+      websocketService.disconnect();
+    };
+  }, []);
+
+  return null;
+}

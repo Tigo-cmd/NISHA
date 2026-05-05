@@ -1,0 +1,577 @@
+NISHA Landing Page & Dashboard - Product Requirements Document
+Version: 1.0
+Date: 2026-04-19
+Status: Draft
+Aesthetic: Cyberpunk / Hacker Terminal / Alien Intelligence
+Reference: Crucix.live (terminal aesthetic, 3D elements, motion)
+1. Visual Design System
+1.1 Color Palette
+plain
+Copy
+
+PRIMARY PALETTE
+===============
+Background:      #0A0A0F (Deep space black)
+Surface:         #12121A (Terminal panel)
+Elevated:        #1A1A2E (Floating elements)
+
+ACCENT COLORS
+=============
+Neon Cyan:       #00F0FF (Primary action, links)
+Acid Green:      #39FF14 (Success, active status)
+Alert Red:       #FF2A6D (Critical, warnings)
+Electric Purple: #BD00FF (Secondary accent, hover)
+Warning Amber:   #FFAA00 (Caution, medium alerts)
+
+TEXT COLORS
+===========
+Primary:         #E0E0E0 (Main text)
+Secondary:       #8B8B9E (Muted, labels)
+Terminal Green:  #00FF41 (Code, data streams)
+Ghost White:     #F0F0F0 (Headlines)
+
+1.2 Typography
+Table
+Element	Font	Weight	Size	Effect
+H1 Hero	Space Grotesk	700	72px	Glitch animation on load
+H2 Section	Space Grotesk	600	48px	Scanline reveal
+H3 Card	Inter	600	24px	Terminal cursor blink
+Body	Inter	400	16px	Subtle glow
+Code/Data	JetBrains Mono	400	14px	Matrix rain background
+Labels	Inter	500	12px	Uppercase, letter-spacing
+1.3 Visual Effects
+plain
+Copy
+
+EFFECT LIBRARY
+==============
+
+1. GLITCH TEXT
+   ├── Random character swap
+   ├── RGB split (chromatic aberration)
+   ├── Horizontal slice displacement
+   └── Trigger: Page load, hover, data update
+
+2. TERMINAL CURSOR
+   ├── Blinking underscore
+   ├── Typing animation for text reveal
+   └── Green glow (#00FF41)
+
+3. SCANLINES
+   ├── Subtle horizontal lines (opacity 0.03)
+   ├── Slow vertical drift
+   └── CRT monitor aesthetic
+
+4. HOLOGRAPHIC 3D
+   ├── Three.js floating primitives
+   ├── Wireframe + glow shader
+   ├── Mouse parallax interaction
+   └── Rotating NISHA logo (icosahedron)
+
+5. DATA STREAMS
+   ├── Falling code/matrix effect
+   ├── Background decoration (subtle)
+   └── Color: Terminal green, low opacity
+
+6. GLASSMORPHISM DARK
+   ├── Backdrop-filter: blur(20px)
+   ├── Background: rgba(18, 18, 26, 0.7)
+   ├── Border: 1px solid rgba(0, 240, 255, 0.1)
+   └── Box-shadow: 0 0 40px rgba(0, 240, 255, 0.1)
+
+2. Landing Page Structure
+2.1 Section: Hero (Full Viewport)
+plain
+Copy
+
+LAYOUT: Centered, immersive 3D background
+
+BACKGROUND:
+├─ Three.js canvas (WebGL)
+├─ Floating wireframe nodes (representing mesh network)
+├─ Connecting lines (pulsing data flows)
+├─ Particle system (dust, subtle movement)
+├─ Color: Cyan/purple gradient on black
+└─ Mouse interaction: Parallax tilt
+
+CONTENT:
+├─ Logo: NISHA (glitch animation on load)
+│   └── Subtitle: "NODE-BASED INTELLIGENCE & SECURITY HAZARD ANALYZER"
+│
+├─ Headline: "THE NETWORK IS ALIVE"
+│   └── Effect: Typing animation, terminal cursor
+│
+├─ Subheadline: "Join the distributed defense. Your device becomes a 
+│   sensor. Your community becomes intelligent."
+│
+├─ CTAs:
+│   ├─ [DOWNLOAD APP] - Primary button (neon cyan, glow)
+│   │   └─ Links to App Store / Play Store (modal on click)
+│   │
+│   └─ [ENTER DASHBOARD] - Secondary button (ghost, border glow)
+│       └─ Links to /dashboard/login
+│
+└─ Scroll indicator: Animated chevron + "INITIALIZE SCROLL SEQUENCE"
+
+INTERACTION:
+├─ Mouse move: Background nodes rotate subtly
+├─ Click logo: Trigger glitch effect
+└─ Scroll: Fade to next section with scanline transition
+
+2.2 Section: Terminal Intro (Full Width)
+plain
+Copy
+
+LAYOUT: Terminal window aesthetic
+
+VISUAL:
+├─ Container: Rounded rectangle, glassmorphism dark
+├─ Header: Three dots (close/minimize/maximize), title "nisha_init.sh"
+├─ Content: Monospace text, typing animation
+└─ Scrollbar: Custom, neon cyan thumb
+
+CONTENT (Typing animation):
+> initializing_secure_mesh_protocol...
+> [OK] cryptographic handshake established
+> [OK] distributed nodes detected: 847 active
+> [OK] audio sensors: 1,294 online
+> [OK] video feeds: 892 streaming
+> [OK] threat detection: ARMED
+> 
+> WELCOME TO NISHA v2.4.1
+> Community-powered security network
+> 
+> _ (blinking cursor)
+
+CTA: [JOIN THE NETWORK] - Scrolls to download section
+
+2.3 Section: How It Works (3 Cards)
+plain
+Copy
+
+LAYOUT: 3 columns, floating cards with 3D tilt
+
+CARD 1: DOWNLOAD
+├─ Icon: Download arrow (animated, pulsing)
+├─ Number: 01 (large, outlined, glitch effect)
+├─ Title: "ACQUIRE"
+├─ Description: "Install the NISHA sensor app. iOS or Android. 
+│   45MB. Military-grade encryption."
+├─ Visual: Phone mockup with app interface (3D rotate on hover)
+└─ Accent: Neon cyan
+
+CARD 2: ACTIVATE
+├─ Icon: Power button (filling animation)
+├─ Number: 02
+├─ Title: "ACTIVATE"
+├─ Description: "Enable your sensors. Audio detection. Video intelligence.
+│   Location awareness. You control every permission."
+├─ Visual: Permission toggles animating on (green checkmarks)
+└─ Accent: Acid green
+
+CARD 3: PROTECT
+├─ Icon: Shield (ripple pulse effect)
+├─ Number: 03
+├─ Title: "PROTECT"
+├─ Description: "Your device joins the mesh. Detect threats.
+│   Alert your community. Sleep soundly."
+├─ Visual: Map with pulsing nodes appearing
+└─ Accent: Electric purple
+
+INTERACTION:
+├─ Hover: Card lifts (transform: translateZ), glow intensifies
+├─ Scroll trigger: Cards stagger-animate in from bottom
+└─ Click: Expand to detail modal (optional)
+
+2.4 Section: Live Network (Data Visualization)
+plain
+Copy
+
+LAYOUT: Full width, dark background with grid
+
+VISUAL:
+├─ Background: Dark grid (faint, cyan lines)
+├─ Center: Rotating 3D globe or local map
+├─ Nodes: Pulsing dots (cyan = active, red = alert, purple = mobile)
+├─ Connections: Animated lines (data flowing)
+├─ Stats overlay: Floating numbers, counting up
+└─ Effect: Slight fish-eye lens distortion at edges
+
+CONTENT:
+├─ Headline: "LIVE NETWORK STATUS"
+├─ Real-time counters (animated):
+│   ├─ ACTIVE NODES: 1,247 (counting)
+│   ├─ DETECTIONS 24H: 23 (low = good)
+│   ├─ COMMUNITIES: 47
+│   └─ UPTIME: 99.97%
+│
+├─ Mini map: User's location (if permitted) with nearby nodes
+└─ CTA: [EXPLORE COVERAGE MAP] - Links to full map view
+
+NOTE: Data can be simulated for launch, real after deployment
+
+2.5 Section: Features (Grid with Icons)
+plain
+Copy
+
+LAYOUT: 2x3 grid, hexagonal icons, hover reveals detail
+
+GRID ITEMS:
+├─ 🔊 AUDIO DETECTION
+│  └─ "Gunshots. Explosions. Screams. Identified in 100ms."
+│
+├─ 📹 VIDEO INTELLIGENCE
+│  └─ "Motion detected. Objects classified. Suspicious activity flagged."
+│
+├─ 🗺️ LOCATION MAPPING
+│  └─ "Incidents mapped. Response coordinated. Evidence geotagged."
+│
+├─ 🔔 REAL-TIME ALERTS
+│  └─ "Instant notifications. Telegram integration. Community-wide warnings."
+│
+├─ 🌐 MESH NETWORK
+│  └─ "No internet required. Devices relay through each other. Always on."
+│
+└─ 🔒 PRIVACY FIRST
+   └─ "Your data, your control. On-device processing. End-to-end encrypted."
+
+VISUAL STYLE:
+├─ Icons: Line art, neon stroke, animated on hover
+├─ Background: Subtle circuit board pattern
+├─ Hover: Icon glows, description slides up, background shifts
+└─ Scroll: Stagger reveal from center outward
+
+2.6 Section: Download (App Store)
+plain
+Copy
+
+LAYOUT: Split screen, phone mockup + QR code
+
+LEFT SIDE:
+├─ Headline: "DEPLOY YOUR SENSOR"
+├─ Subhead: "Available for iOS and Android. Free. Open source core."
+├─ QR Code: Large, centered, animated scan line
+│   └─ Label: "Scan to install"
+├─ Badges: App Store + Play Store (official buttons)
+└─ Requirements: "iOS 14+ or Android 10+. 120MB storage."
+
+RIGHT SIDE:
+├─ 3D Phone mockup (rotating slowly)
+├─ Screen shows: App interface with active detection
+├─ Glow effect: Cyan aura around phone
+└─ Particles: Floating app icons (subtle)
+
+INTERACTION:
+├─ QR hover: Zoom + glow pulse
+├─ Phone: Parallax tilt on mouse move
+└─ Badges: Scale up on hover
+
+2.7 Section: Dashboard Preview (For Admins)
+plain
+Copy
+
+LAYOUT: Terminal window showing dashboard screenshot
+
+VISUAL:
+├─ Mock terminal window (glassmorphism)
+├─ Inside: Screenshot of actual dashboard (blurred sensitive data)
+├─ Labels pointing to features:
+│   ├─ "Real-time agent map"
+│   ├─ "Alert management"
+│   ├─ "System health monitoring"
+│   └─ "Analytics and reporting"
+│
+├─ Headline: "COMMAND CENTER"
+├─ Subhead: "For security administrators and community leaders."
+└─ CTA: [ACCESS DASHBOARD] → /dashboard/login
+
+RESTRICTION: "Authorized personnel only. Request access via email."
+
+2.8 Section: Footer
+plain
+Copy
+
+LAYOUT: Clean, organized columns
+
+CONTENT:
+├─ Column 1: Logo + tagline + social links (GitHub, Twitter, Telegram)
+├─ Column 2: Product (Features, Download, Documentation, GitHub)
+├─ Column 3: Company (About, Blog, Careers, Contact)
+├─ Column 4: Legal (Privacy, Terms, Security, Compliance)
+│
+├─ Bottom bar:
+│   ├─ Left: "© 2026 NISHA Project. Open source security."
+│   ├─ Center: Version number "v2.4.1-stable"
+│   └─ Right: "Built with ❤️ in Lagos"
+│
+└─ Easter egg: Konami code triggers matrix rain effect
+
+3. Dashboard Design
+3.1 Layout Structure
+plain
+Copy
+
+NISHA DASHBOARD
+===============
+
+┌─────────────────────────────────────────────────────────┐
+│  HEADER (Fixed, 60px height)                              │
+│  ├─ Logo (small, left)                                    │
+│  ├─ Breadcrumb: "DASHBOARD / AGENTS / A-001"            │
+│  ├─ Global search (cmd+K)                                 │
+│  ├─ Notifications (bell, red dot if alerts)             │
+│  ├─ System status (green pulse = healthy)                │
+│  └─ User avatar (dropdown: profile, logout)               │
+├─────────────────────────────────────────────────────────┤
+│  SIDEBAR (240px, collapsible)    │  MAIN CONTENT AREA     │
+│  ├─ NAVIGATION                    │  (Fluid width)        │
+│  │  ├─ 🏠 Overview               │                       │
+│  │  ├─ 📡 Agents                  │                       │
+│  │  ├─ 🎯 Masters                 │                       │
+│  │  ├─ 🗺️ Map                    │                       │
+│  │  ├─ 🔔 Alerts                  │                       │
+│  │  ├─ 📊 Analytics               │                       │
+│  │  ├─ ⚙️ System                  │                       │
+│  │  └─ 🔒 Security                │                       │
+│  │                                │                       │
+│  ├─ DIVIDER                      │                       │
+│  │                                │                       │
+│  ├─ QUICK STATS                  │                       │
+│  │  ├─ Online: 1,247             │                       │
+│  │  ├─ Alerts: 3                 │                       │
+│  │  └─ Masters: 12                │                       │
+│  │                                │                       │
+│  └─ FOOTER                       │                       │
+│     ├─ Version: v2.4.1           │                       │
+│     └─ Theme toggle (dark/light) │                       │
+│                                  │                       │
+└──────────────────────────────────┴───────────────────────┘
+
+3.2 Page: Overview (Default)
+plain
+Copy
+
+CONTENT GRID:
+├─ ROW 1: KPI CARDS (4 columns)
+│  ├─ Card 1: "AGENTS ONLINE"
+│  │   ├─ Big number: 1,247 (animated count)
+│  │   ├─ Sparkline: Last 24h activity
+│  │   ├─ Trend: +12% vs yesterday
+│  │   └─ Status: Green pulse
+│  │
+│  ├─ Card 2: "ACTIVE ALERTS"
+│  │   ├─ Big number: 3 (red if >0)
+│  │   ├─ Breakdown: Critical 1, High 2
+│  │   ├─ Last alert: "Gunshot detected, Zone 4"
+│  │   └─ Action: [VIEW ALL]
+│  │
+│  ├─ Card 3: "MASTERS HEALTHY"
+│  │   ├─ Big number: 12/12
+│  │   ├─ Load distribution chart (mini bar)
+│  │   ├─ Warning: "M-003 at 85% capacity"
+│  │   └─ Action: [REBALANCE]
+│  │
+│  └─ Card 4: "AUDIO PROCESSED"
+│      ├─ Big number: 847 GB (24h)
+│      ├─ Waveform visualization (animated)
+│      ├─ Detections: 23 events
+│      └─ Efficiency: 99.2% accuracy
+│
+├─ ROW 2: LIVE MAP (2/3 width) + ACTIVITY FEED (1/3)
+│  │
+│  ├─ MAP COMPONENT:
+│  │   ├─ Mapbox GL JS / Leaflet
+│  │   ├─ Dark theme (custom tiles)
+│  │   ├─ Agent markers:
+│  │   │   ├─ Cyan dot: ESP32 agent
+│  │   │   ├─ Purple dot: Mobile agent
+│  │   │   ├─ Square: Master node (Pi)
+│  │   │   └─ Pulsing red: Active alert
+│  │   ├─ Connection lines (mesh visualization, toggle)
+│  │   ├─ Heatmap layer (detection density)
+│  │   ├─ Click marker: Popup with agent details
+│  │   └─ Controls: Zoom, layers, fullscreen
+│  │
+│  └─ ACTIVITY FEED:
+│      ├─ Header: "LIVE FEED" + [FILTER]
+│      ├─ Scrollable list (auto-scroll, pause on hover)
+│      ├─ Items:
+│      │   ├─ Timestamp (relative: "2s ago")
+│      │   ├─ Agent ID (clickable)
+│      │   ├─ Event type icon
+│      │   ├─ Description
+│      │   └─ Confidence badge
+│      └─ Load more: Pagination or infinite scroll
+│
+└─ ROW 3: SYSTEM HEALTH (Full width)
+    ├─ 3D visualization: Network graph (D3.js or Three.js)
+    ├─ Nodes: Masters (size = load)
+    ├─ Edges: Connection strength (color = latency)
+    ├─ Interactive: Drag, zoom, click for details
+    └─ Legend: Color coding explanation
+
+3.3 Page: Agent Detail
+plain
+Copy
+
+HEADER:
+├─ Back button ←
+├─ Agent ID: A-001
+├─ Status badge: ACTIVE (green pulse)
+├─ Actions: [REBOOT] [UPDATE CONFIG] [CALIBRATE]
+└─ Tabs: [OVERVIEW] [AUDIO] [VIDEO] [LOGS] [SETTINGS]
+
+CONTENT:
+├─ LEFT COLUMN (40%): Agent Info Card
+│  ├─ Hardware: ESP32-CAM v1.2
+│  ├─ Firmware: 2.4.1 (update available)
+│  ├─ Location: Zone 4, Gate North
+│  ├─ GPS: 6.5244, 3.3792 (map mini)
+│  ├─ Master: M-002 (link)
+│  ├─ Uptime: 14 days, 6 hours
+│  ├─ Battery: 78% (trend graph)
+│  ├─ Signal: -65 dBm (good)
+│  ├─ Temperature: 42°C (normal)
+│  └─ Capabilities: Audio ✓, Video ✓, Radar ✗
+
+├─ RIGHT COLUMN (60%): Live Data
+│  ├─ AUDIO VISUALIZER:
+│  │   ├─ Real-time waveform (WebSocket)
+│  │   ├─ Spectrogram (FFT visualization)
+│  │   ├─ Detection markers (vertical lines)
+│  │   └─ Controls: [LISTEN] [MUTE] [RECORD]
+│  │
+│  ├─ VIDEO FEED:
+│  │   ├─ Thumbnail: Last motion detection
+│  │   ├─ Status: "Standby" or "Recording"
+│  │   └─ Controls: [VIEW LIVE] [SNAPSHOT]
+│  │
+│  └─ RECENT DETECTIONS:
+│      ├─ Table: Time, Type, Confidence, Action
+│      ├─ Click row: Play audio, view details
+│      └─ Export: [DOWNLOAD CSV]
+
+├─ BOTTOM: COMMAND HISTORY
+│  └─ Timeline of commands sent, responses, failures
+
+3.4 Page: Alert Management
+plain
+Copy
+
+HEADER:
+├─ Title: "ALERT CENTER"
+├─ Stats: 3 Unacknowledged, 12 Today, 156 This Month
+├─ Filters: [ALL] [CRITICAL] [HIGH] [MEDIUM] [LOW]
+└─ Actions: [EXPORT] [BULK ACKNOWLEDGE]
+
+ALERT LIST:
+├─ Card-based layout (not table, more visual)
+├─ Each card:
+│  ├─ Left border: Color by severity (red/cyan/purple)
+│  ├─ Header: Timestamp + Agent + Location
+│  ├─ Type icon: 🔊 Audio / 📹 Video / 🎯 Master
+│  ├─ Description: "Possible gunshot detected"
+│  ├─ Confidence: 94% (progress bar)
+│  ├─ Media: Audio waveform (play button)
+│  ├─ Map: Mini location pin
+│  ├─ Status: New / Acknowledged / Resolved
+│  └─ Actions: [ACKNOWLEDGE] [DISPATCH] [FALSE POSITIVE] [VIEW DETAIL]
+
+DETAIL VIEW (Modal or side panel):
+├─ Full audio player with spectrogram
+├─ Video clip if available
+├─ Agent context (nearby agents, correlations)
+├─ Location map with radius
+├─ Response log (who acknowledged, when)
+└─ Related alerts (same time/location)
+
+4. Technical Implementation
+4.1 Tech Stack
+Table
+Layer	Technology	Rationale
+Framework	Next.js 14 (App Router)	SSR, SEO, performance
+Language	TypeScript	Type safety
+Styling	Tailwind CSS + CSS Modules	Rapid development
+UI Components	Radix UI (headless)	Accessibility, customization
+Animation	Framer Motion	React-native animations
+3D/WebGL	Three.js + React Three Fiber	Landing page visuals
+Maps	Mapbox GL JS	Performance, custom styling
+Charts	D3.js + Recharts	Data visualization
+State	Zustand	Lightweight, no boilerplate
+Real-time	Socket.io-client	WebSocket connections
+Icons	Lucide React	Consistent, customizable
+4.2 Performance Targets
+Table
+Metric	Target	Measurement
+First Contentful Paint	<1.5s	Lighthouse
+Time to Interactive	<3.5s	Lighthouse
+3D Frame Rate	60fps	Chrome DevTools
+Bundle Size	<200KB initial	Webpack Analyzer
+API Response	<200ms	Server timing
+5. Implementation Roadmap
+Phase 1: Foundation 
+
+    [ ] Next.js project setup with TypeScript
+    [ ] Design system implementation (colors, typography, components)
+    [ ] Three.js scene setup (hero background)
+    [ ] Basic page structure (sections, navigation)
+
+Phase 2: Landing Page 
+
+    [ ] Hero section with 3D mesh network
+    [ ] Terminal intro animation
+    [ ] How it works cards with hover effects
+    [ ] Live network visualization (simulated data)
+    [ ] Features grid
+    [ ] Download section with QR code
+    [ ] Footer and responsive design
+
+Phase 3: Dashboard Framework
+
+    [ ] Authentication (login page with terminal aesthetic)
+    [ ] Layout (sidebar, header, main content)
+    [ ] Navigation and routing
+    [ ] Real-time WebSocket connection
+    [ ] Dark/light theme toggle
+
+Phase 4: Dashboard Pages 
+
+    [ ] Overview page with KPIs and map
+    [ ] Agent list and detail pages
+    [ ] Master management
+    [ ] Alert center with audio player
+    [ ] Analytics and reporting
+    [ ] System settings
+
+Phase 5: Polish 
+
+    [ ] Animation refinement
+    [ ] Performance optimization
+    [ ] Accessibility audit
+    [ ] Mobile responsiveness
+    [ ] Browser testing
+
+6. Appendices
+Appendix A: Animation Specifications
+Table
+Animation	Trigger	Duration	Easing
+Glitch text	Page load	0.5s	Steps(5)
+Typing cursor	Text reveal	30ms/char	Linear
+Card hover lift	Mouse enter	0.3s	Cubic-bezier(0.4, 0, 0.2, 1)
+3D parallax	Mouse move	Continuous	Smooth lerp
+Scanline reveal	Scroll into view	0.8s	Ease-out
+Data stream	Background	Infinite	Linear
+Appendix B: Responsive Breakpoints
+Table
+Breakpoint	Width	Adjustments
+Mobile	<640px	Single column, 3D disabled, hamburger menu
+Tablet	640-1024px	2 columns, simplified 3D
+Desktop	1024-1440px	Full layout
+Ultrawide	>1440px	Max-width container, centered
+Document Status: Ready for Design Review
+Next Steps:
+
+    Create Figma design system (colors, components)
+    Build Three.js prototype (hero section)
+    Implement landing page (Next.js)
+    Parallel: Dashboard API development
