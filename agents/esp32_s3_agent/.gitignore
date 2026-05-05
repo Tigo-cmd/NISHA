@@ -1,0 +1,52 @@
+# ESP32 Firmware - Git Ignore
+
+# PlatformIO / Arduino
+.pio/
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-workspace
+*.sublime-project
+
+# Build artifacts
+build/
+firmware/
+*.bin
+*.hex
+*.elf
+*.map
+*.sym
+*.ld
+*.eep
+
+# Debug
+debug/
+*.log
+*.out
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary
+tmp/
+temp/
+*.tmp
+
+# Secrets (NEVER commit these!)
+secrets.h
+config_local.h
+credentials.h
+ wifi_config.h
+
+# PlatformIO user files (may contain secrets)
+.pioenvs/
+.piolibdeps/
+
+# Arduino
+*.sketch/
+*.zip
+
+# Documentation builds
+docs/_build/
