@@ -1,0 +1,383 @@
+# NISHA — Product Requirements Document (PRD)
+
+## 1. Product Overview
+
+**Product Name:** NISHA (Neural Intelligent Surveillance & Hazard Analysis)
+**Category:** AI-powered distributed surveillance & behavioral intelligence system
+
+**Description:**
+NISHA is a multi-agent, edge-to-cloud AI system designed to detect and classify **violence, suspicious behavior, and abnormal activity in real time** using **computer vision, audio intelligence, and spatial localization**.
+
+The system combines:
+
+* Camera-based perception
+* Audio-based detection
+* Multi-agent mesh networking
+* Real-time analytics and alerting
+
+---
+
+## 2. Objectives
+
+### Primary Goals
+
+* Detect **violence and suspicious behavior in real time**
+* Provide **low-latency alerts (<3 seconds)**
+* Enable **scalable deployment using distributed agents**
+* Operate in **low-infrastructure environments**
+
+### Secondary Goals
+
+* Provide spatial awareness (location estimation)
+* Enable historical analytics and trend detection
+* Support multi-modal intelligence (vision + audio)
+
+---
+
+## 3. Target Use Cases
+
+* Public security monitoring (streets, campuses)
+* Private estate surveillance
+* Transport hubs (bus parks, terminals)
+* Event crowd monitoring
+* Smart city infrastructure
+
+---
+
+## 4. System Architecture
+
+### 4.1 High-Level Flow
+
+```text
+Agents → Master Node → Backend Server → AI Engine → Alerts + Dashboard
+```
+
+---
+
+### 4.2 Components
+
+#### A. Edge Layer (Agents)
+
+* Hardware: ESP32-CAM / Camera-enabled nodes
+* Responsibilities:
+
+  * Capture video/audio
+  * Detect motion (PIR/ultrasonic)
+  * Stream data to Master
+  * Participate in mesh routing
+
+---
+
+#### B. Master Node (Raspberry Pi)
+
+* Aggregates up to 50 agents
+* Handles:
+
+  * Local coordination
+  * Time synchronization
+  * Data buffering
+  * Compression and forwarding
+
+---
+
+#### C. Backend Server
+
+* API + orchestration layer
+* Handles:
+
+  * Agent lifecycle management
+  * Data ingestion
+  * Event processing
+  * Communication with AI modules
+
+---
+
+#### D. AI Engine
+
+**1. Vision Pipeline**
+
+* Model: YOLOv8 (pose-enabled)
+* Output:
+
+  * Person detection
+  * Keypoints extraction
+
+**2. Behavior Model**
+
+* Model: LSTM / GRU
+* Input:
+
+  * Keypoint sequences (20–30 frames)
+* Output:
+
+  * Behavior classification
+
+**Classes:**
+
+* Normal
+* Violence
+* Suspicious behavior
+* Panic/abnormal movement
+
+---
+
+**3. Audio Pipeline**
+
+* Model: YAMNet
+* Detects:
+
+  * Gunshots
+  * Screams
+  * Explosions
+  * Distress sounds
+
+---
+
+**4. Fusion Engine**
+Combines:
+
+* Vision results
+* Audio results
+* Context
+
+Outputs:
+
+* Threat score
+* Confidence level
+
+---
+
+#### E. Localization Engine (Optional Phase 2)
+
+* Uses multi-agent signal data (RSSI)
+* Performs trilateration
+* Outputs approximate location
+
+---
+
+#### F. Frontend Dashboard
+
+* Real-time map view
+* Live camera feeds
+* Alerts panel
+* Agent health monitoring
+* Event timeline
+
+---
+
+## 5. Functional Requirements
+
+### 5.1 Detection
+
+* Detect humans in real time
+* Extract pose keypoints
+* Classify behavior within 2–3 seconds
+
+---
+
+### 5.2 Audio Detection
+
+* Process audio in 1–3 second windows
+* Detect predefined sound classes
+
+---
+
+### 5.3 Alerts
+
+* Trigger alerts when:
+
+  * High confidence violence detected
+  * Audio + vision signals align
+* Channels:
+
+  * Dashboard
+  * Telegram/SMS
+
+---
+
+### 5.4 Agent Management
+
+* Agent registration and provisioning
+* Heartbeat monitoring (30s interval)
+* Status tracking:
+
+  * Active
+  * Offline
+  * Degraded
+  * Tampered
+
+---
+
+### 5.5 Mesh Networking
+
+* Multi-hop communication
+* Automatic routing
+* Failover handling
+
+---
+
+### 5.6 Data Storage
+
+* Store:
+
+  * Event logs
+  * Detection metadata
+  * Agent state
+* Optional:
+
+  * Short video clips (event-based)
+
+---
+
+## 6. Non-Functional Requirements
+
+### Performance
+
+* Latency: <3 seconds detection-to-alert
+* Throughput: Support 100+ agents
+
+### Scalability
+
+* Modular services (AI separated from API)
+* Horizontal scaling (multiple AI workers)
+
+### Reliability
+
+* Offline buffering (Master nodes)
+* Automatic failover
+
+### Security
+
+* Secure agent authentication
+* Encrypted communication
+
+---
+
+## 7. Machine Learning Requirements
+
+### 7.1 Dataset
+
+* Source: Kaggle + custom data
+* Classes balanced
+* Includes:
+
+  * Real-world noise
+  * Crowded environments
+
+---
+
+### 7.2 Training Pipeline
+
+```text
+Video → Frames → YOLO Pose → Keypoints → Sequence → LSTM
+```
+
+---
+
+### 7.3 Model Specs
+
+| Component | Model             |
+| --------- | ----------------- |
+| Detection | YOLOv8s / YOLOv8m |
+| Behavior  | LSTM / GRU        |
+| Audio     | YAMNet            |
+
+---
+
+### 7.4 Metrics
+
+* Accuracy
+* Precision / Recall
+* F1-score
+* Latency
+
+---
+
+## 8. MVP Scope (Phase 1)
+
+### Included:
+
+* Camera input
+* YOLOv8 detection
+* Pose-based LSTM classification
+* Basic alerts (Telegram)
+* Simple dashboard
+
+---
+
+### Excluded:
+
+* Full triangulation
+* Advanced analytics
+* Facial recognition
+
+---
+
+## 9. Phase Roadmap
+
+### Phase 1 (MVP)
+
+* Vision-based detection
+* Alerting system
+
+### Phase 2
+
+* Audio integration
+* Localization (triangulation)
+* Improved UI
+
+### Phase 3
+
+* Multi-camera tracking
+* Predictive analytics
+* Enterprise features
+
+---
+
+## 10. Risks & Mitigation
+
+| Risk               | Mitigation              |
+| ------------------ | ----------------------- |
+| False positives    | Fusion (audio + vision) |
+| Poor lighting      | Data augmentation       |
+| Network failure    | Local buffering         |
+| Noisy environments | Audio filtering         |
+
+---
+
+## 11. Success Criteria
+
+* ≥85% accuracy on violence detection
+* <3s alert latency
+* Stable operation with 50+ agents
+* Low false positive rate (<10%)
+
+---
+
+## 12. Future Enhancements
+
+* Transformer-based behavior models
+* Edge AI deployment
+* Federated learning
+* Smart city integrations
+
+---
+
+## 13. Summary
+
+NISHA is a **multi-modal intelligent surveillance platform** combining:
+
+* Computer vision
+* Audio intelligence
+* Distributed IoT agents
+* Real-time analytics
+
+It is designed to be:
+
+* Scalable
+* Real-time
+* Context-aware
+* Adaptable to real-world environments
+
+---
+after all planning and implementation the system is not working as expected it should communicate with the backend server.

@@ -1,0 +1,89 @@
+# AI Models Directory - Git Ignore
+
+# Model files (large binaries, keep out of git)
+*.pt
+*.pth
+*.onnx
+*.pb
+*.h5
+*.keras
+*.tflite
+*.mlmodel
+
+# Model checkpoints
+checkpoints/
+runs/
+output/
+experiments/
+
+# Training artifacts
+train/
+val/
+test/
+data/
+datasets/
+video_processing/violence\ dataset/
+violence\ dataset/
+
+# Logs and results
+logs/
+results/
+*.json
+*.csv
+*.yaml
+!config.yaml  # Keep config files
+
+# Cache
+.cache/
+__pycache__/
+*.py[cod]
+
+# Virtual envs
+env/
+venv/
+.venv/
+
+# IDEs
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary
+tmp/
+temp/
+*.tmp
+
+# Hugging Face cache
+.huggingface/
+transformers_cache/
+
+# Weights & Biases
+wandb/
+*.wandb
+
+# MLflow
+mlruns/
+
+# TensorBoard
+tensorboard/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Conda
+conda/
+anaconda/
+
+# Poetry
+poetry.lock
+
+# pip
+pip-wheel-metadata/
+
+# Note: Keep small config files and READMEs in git.
+# Model files should be stored externally (S3, MLflow, HuggingFace) 
+# and downloaded on deployment.
