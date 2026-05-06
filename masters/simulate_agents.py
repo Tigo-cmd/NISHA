@@ -12,7 +12,7 @@ import websockets
 
 # Format: stream_type(B), priority(B), seq(I), ts(d), rssi(b), battery(B), payload_len(H)
 HEADER_FORMAT = "!BBIdbBH"
-WS_URL = "ws://localhost:8081"
+WS_URL = "ws://localhost:8082"
 
 async def simulate_agent(agent_id: str, fps: int = 30, payload_kb: int = 20):
     """Simulates a single ESP32 agent sending continuous video frames."""
