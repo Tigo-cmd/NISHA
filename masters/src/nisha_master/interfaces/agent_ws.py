@@ -6,6 +6,7 @@ import base64
 import json
 from typing import Dict, Any
 
+import json
 from websockets.asyncio.server import serve, ServerConnection
 
 logger = logging.getLogger(__name__)
@@ -163,7 +164,6 @@ class AgentWebSocketServer:
                     # RELAY TO BACKEND: Inject agent_id into metadata if missing
                     # This ensures the backend knows which agent sent the binary frame
                     try:
-                        import json
                         meta = {}
                         if meta_len > 0:
                             meta_bytes = bytes(view[HEADER_SIZE : HEADER_SIZE + meta_len])
