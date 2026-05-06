@@ -110,6 +110,26 @@ async def get_agent_media(agent_id: str, media_type: str):
     
     return {"error": "Invalid media type"}
 
+@router.post("/api/v1/agents")
+async def relay_agent_registration(data: Dict[str, Any]):
+    """Relays generic agent registration (from hardware nodes) to the main backend."""
+    backend_url = f"{settings.backend_base_url}/api/v1/agents"
+    logger.info(f"Relaying agent registration to backend: {backend_url}")
+    
+    async with httpx.AsyncClient() as client:
+        try:
+            # Relay the auth header if present, or use the master's token
+            response = await client.post(
+                backend_url,
+                json=data,
+                headers={"Authorization": f"Bearer {settings.backend_auth_token}"},
+                timeout=10.0
+            )
+            return response.json()
+        except Exception as e:
+            logger.error(f"Failed to relay agent registration: {e}")
+            return {"status": "error", "message": str(e)}
+
 @router.post("/api/v1/mobile/register")
 async def relay_mobile_registration(data: Dict[str, Any]):
     """Relays mobile agent registration to the main backend."""
@@ -126,6 +146,47 @@ async def relay_mobile_registration(data: Dict[str, Any]):
             return response.json()
         except Exception as e:
             logger.error(f"Failed to relay registration: {e}")
+            return {"status": "error", "message": str(e)}
+
+@router.post("/api/v1/mobile/heartbeat")
+async def relay_mobile_heartbeat(data: Dict[str, Any]):
+    """Relays mobile heartbeat to the central backend."""
+    backend_url = f"{settings.backend_base_url}/api/v1/mobile/heartbeat"
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(backend_url, json=data, timeout=5.0)
+            return response.json()
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
+@router.post("/api/v1/mobile/batch")
+async def relay_mobile_batch(data: Dict[str, Any]):
+    """Relays batch event data from mobile master/agents to backend."""
+    backend_url = f"{settings.backend_base_url}/api/v1/mobile/batch"
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(backend_url, json=data, timeout=15.0)
+            return response.json()
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
+@router.post("/api/v1/mobile/stream/chunk")
+async def relay_mobile_stream_chunk(request: Request):
+    """Relays binary stream chunks (HTTP fallback) to backend."""
+    backend_url = f"{settings.backend_base_url}/api/v1/mobile/stream/chunk"
+    agent_id = request.headers.get("agent-id")
+    body = await request.body()
+    
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(
+                backend_url, 
+                content=body, 
+                headers={"agent-id": agent_id} if agent_id else {},
+                timeout=10.0
+            )
+            return response.json()
+        except Exception as e:
             return {"status": "error", "message": str(e)}
 
 @router.post("/api/agent/{agent_id}/command")
