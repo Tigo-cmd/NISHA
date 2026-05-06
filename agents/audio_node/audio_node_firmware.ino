@@ -1,24 +1,23 @@
-/*
- * NISHA Sentinel - Audio Node Firmware (ESP32-S3)
- * Reconfigured for Real-Time WebSocket streaming to NISHA Master.
- */
-
 #include <WiFi.h>
 #include <ESPmDNS.h>
-#include <WebSocketsClient.h> // Ensure you have the "WebSockets" library by Markus Sattler
-
+#include <WebSocketsClient.h> 
 #include <HTTPClient.h>
+#include <time.h>            // Added for NTP
 #include "driver/i2s.h"
 
 // --- CONFIGURATION ---
-const char* ssid = "Tigonuel";
-const char* password = "        ";
-const char* backend_url = "http://Tigo.local:8081/api/v1/agents";
-const char* master_ws_url = "Tigo.local"; // Master Hostname
-const int master_ws_port = 8082;            // Master Telemetry Port
+const char* ssid = "CLICKNETWORKS";
+const char* password = "hotguy112345";
+const char* backend_url = "http://192.168.1.155:8081/api/v1/agents";
+const char* master_ws_url = "192.168.1.155"; 
+const int master_ws_port = 8082;            
 
 const char* api_key = "nisha_master_key_2024_secure";
 const char* agent_id = "AUDIO-NODE-01";
+
+// --- HEARTBEAT TIMER ---
+unsigned long lastHeartbeat = 0;
+const unsigned long heartbeatInterval = 20000; // 20 seconds
 
 // --- I2S PINS ---
 #define I2S_WS   15
@@ -58,38 +57,36 @@ void registerWithBackend() {
 void sendNishaFrame(uint8_t type, uint8_t* payload, size_t len) {
     if (!isConnected) return;
 
-    // Official Header (24 bytes)
-    // Format: magic(2s), ver(B), type(B), prio(B), res(B), seq(I), ts(Q), payload_len(I), meta_len(H)
     uint8_t header[24];
     memset(header, 0, 24);
     
-    header[0] = 'N';                // magic
-    header[1] = 'I';                // magic
+    header[0] = 'N';                
+    header[1] = 'I';                
     header[2] = 0x01;               // version
-    header[3] = type;               // stream_type (0x03 for Audio)
-    header[4] = 0x50;               // priority (Master uses this as RSSI, 0x50 = 80)
-    header[5] = 0x00;               // reserved
+    header[3] = type;               // 0x03 for Audio
+    header[4] = 0x03;               // priority (0x03 = CONTINUOUS for streams)
+    header[5] = 0x00;               
     
-    // sequence (4 bytes, Big Endian)
     static uint32_t seq = 0;
     uint32_t seq_be = __builtin_bswap32(seq++);
     memcpy(&header[6], &seq_be, 4);
 
-    // timestamp (8 bytes, Big Endian)
-    uint64_t ts_be = __builtin_bswap64((uint64_t)time(NULL) * 1000);
+    // Get current NTP time
+    time_t now;
+    time(&now);
+    uint64_t ts_be = __builtin_bswap64((uint64_t)now * 1000);
     memcpy(&header[10], &ts_be, 8);
 
-    // payload_len (4 bytes, Big Endian)
     uint32_t pLen_be = __builtin_bswap32((uint32_t)len);
     memcpy(&header[18], &pLen_be, 4);
     
-    // meta_len (2 bytes, Big Endian)
     uint16_t mLen_be = 0;
     memcpy(&header[22], &mLen_be, 2);
 
-    // Send Header + Payload
     size_t totalSize = 24 + len;
     uint8_t* frame = (uint8_t*)malloc(totalSize);
+    if (!frame) return; // OOM safety
+
     memcpy(frame, header, 24);
     memcpy(frame + 24, payload, len);
 
@@ -104,14 +101,17 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
             isConnected = false;
             Serial.println("[WS] Disconnected");
             break;
-        case WStype_CONNECTED:
+        case WStype_CONNECTED: {
             Serial.println("[WS] Connected to Master");
-            // MANDATORY HANDSHAKE: Send Agent ID as TEXT first
-            webSocket.sendTXT(agent_id);
+            // MODERN HANDSHAKE: Send JSON
+            String handshake = "{\"type\":\"HANDSHAKE\",\"agent_id\":\"" + String(agent_id) + "\",\"mode\":\"AGENT\"}";
+            webSocket.sendTXT(handshake);
+            delay(100); // Give Master a moment to register the agent
             isConnected = true;
             break;
+        }
         case WStype_TEXT:
-            Serial.printf("[WS] Command received: %s\n", payload);
+            Serial.printf("[WS] Command: %s\n", payload);
             break;
     }
 }
@@ -151,17 +151,25 @@ void setup() {
     }
     Serial.println("\nWiFi connected");
 
+    // Sync time with NTP (Essential for backend acceptance)
+    configTime(0, 0, "pool.ntp.org", "time.google.com");
+    Serial.println("Waiting for NTP time sync...");
+    time_t now = time(nullptr);
+    while (now < 8 * 3600 * 2) {
+        delay(500);
+        now = time(nullptr);
+    }
+    Serial.println("Time synchronized");
+
     if (!MDNS.begin("audio-node-01")) {
-        Serial.println("Error setting up MDNS responder!");
-    } else {
-        Serial.println("mDNS responder started: audio-node-01.local");
+        Serial.println("Error setting up MDNS!");
     }
 
     registerWithBackend();
-
     setupI2S();
 
-    webSocket.begin(master_ws_url, master_ws_port, "/ws");
+    // CONNECT TO ROOT "/" INSTEAD OF "/ws"
+    webSocket.begin(master_ws_url, master_ws_port, "/");
     webSocket.onEvent(webSocketEvent);
     webSocket.setReconnectInterval(5000);
 }
@@ -170,17 +178,26 @@ void loop() {
     webSocket.loop();
 
     if (isConnected) {
+        // Send Periodic Heartbeat (Every 10s for testing)
+        if (millis() - lastHeartbeat > 10000) {
+            lastHeartbeat = millis();
+            String hb = "{\"type\":\"HEARTBEAT\",\"agent_id\":\"" + String(agent_id) + "\",\"battery\":100,\"rssi\":-50}";
+            webSocket.sendTXT(hb);
+            Serial.println("[WS] Heartbeat sent");
+        }
+
+        /* --- TEMPORARILY DISABLED FOR DEBUGGING ---
         size_t bytesRead = 0;
         i2s_read(I2S_RX_PORT, (void*)sampleBuffer, sizeof(sampleBuffer), &bytesRead, portMAX_DELAY);
         
         if (bytesRead > 0) {
             int samples = bytesRead / 4;
             for (int i = 0; i < samples; i++) {
-                // Downsample 32-bit to 16-bit
                 pcm16[i] = (int16_t)(sampleBuffer[i] >> 11);
             }
-            // Send as NISHA Audio Frame (Type 0x03)
             sendNishaFrame(0x03, (uint8_t*)pcm16, samples * 2);
         }
+        ------------------------------------------- */
+        delay(10); // Small yield
     }
 }
