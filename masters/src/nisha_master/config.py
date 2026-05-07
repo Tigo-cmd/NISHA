@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     backend_auth_token: str = "NISHA-M1"
 
     # Hardware & Buffering Targets
-    buffer_ram_limit_mb: int = 1024npm config set registry https://registry.npmmirror.com
+    buffer_ram_limit_mb: int = 1024
     buffer_disk_dir: str = "/tmp/nisha_buffer"
     target_latency_ms: int = 50
 
