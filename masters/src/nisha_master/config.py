@@ -16,13 +16,13 @@ class Settings(BaseSettings):
     dashboard_port: int = 8080      # Local UI (FastAPI)
 
     # Backend Link
-    backend_ws_url: str = "ws://127.0.0.1:8081/api/v1/ws/realtime"
-    backend_http_url: str = "http://127.0.0.1:8081/api/v1/master/sync"
-    backend_base_url: str = "http://127.0.0.1:8081"
+    backend_ws_url: str = "wss://api.buildwave.pro/api/v1/ws/realtime"
+    backend_http_url: str = "https://api.buildwave.pro/api/v1/master/sync"
+    backend_base_url: str = "https://api.buildwave.pro"
     backend_auth_token: str = "NISHA-M1"
 
     # Hardware & Buffering Targets
-    buffer_ram_limit_mb: int = 1024
+    buffer_ram_limit_mb: int = 1024npm config set registry https://registry.npmmirror.com
     buffer_disk_dir: str = "/tmp/nisha_buffer"
     target_latency_ms: int = 50
 
