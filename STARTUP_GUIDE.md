@@ -12,8 +12,8 @@ source .venv/bin/bin/activate  # Adjust path if needed
 # Run the server with reload enabled
 python3 -m uvicorn nisha.main:app --host 0.0.0.0 --port 8080 --reload
 ```
-*   **URL**: `http://localhost:8080`
-*   **API Docs**: `http://localhost:8080/docs`
+*   **URL**: `http://localhost:8000`
+*   **API Docs**: `http://localhost:8000/docs`
 
 ---
 
@@ -31,7 +31,7 @@ npm run dev
 
 ---
 
-## 3. NISHA Master Node
+## 3. NISHA Master Node (raspberry pi)
 The Master Node acts as a bridge between agents and the backend.
 
 ```bash
