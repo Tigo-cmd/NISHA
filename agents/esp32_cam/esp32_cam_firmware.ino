@@ -9,9 +9,9 @@
 #include "esp_http_server.h"
 
 // --- CONFIGURATION ---
-const char* ssid = "CLICKNETWORKS";
-const char* password = "hotguy112345";
-const char* backend_url = "http://10.249.27.48:8081/api/v1/agents";
+const char* ssid = "NISHA_CES";
+const char* password = "CES@2470";
+const char* backend_url = "http://api.buildwave.pro/api/v1/agents";
 const char* api_key = "nisha_master_key_2024_secure";
 const char* master_id = "MASTER_001";
 const char* agent_name = "ESP32-SENTINEL-01";
@@ -148,7 +148,7 @@ void setup() {
   config.pin_d5 = Y7_GPIO_NUM;
   config.pin_d6 = Y8_GPIO_NUM;
   config.pin_d7 = Y9_GPIO_NUM;
-  config.pin_xclk = XCLK_XCLK_GPIO_NUM;
+  config.pin_xclk = XCLK_GPIO_NUM;
   config.pin_pclk = PCLK_GPIO_NUM;
   config.pin_vsync = VSYNC_GPIO_NUM;
   config.pin_href = HREF_GPIO_NUM;

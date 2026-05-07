@@ -32,9 +32,8 @@ class Settings(BaseSettings):
 
     # Hardware Agents (ESP32-CAM, etc)
     # List of dicts: [{"id": "CAM_01", "url": "http://192.168.1.115:81/stream", "type": "VIDEO"}]
-    hardware_agents: list[dict] = [
-        {"id": "ESP32-CAM-01", "url": "http://192.168.1.115:81/stream", "type": "VIDEO"}
-    ]
+    # {"id": "ESP32-CAM-01", "url": "http://192.168.1.115:81/stream", "type": "VIDEO"}
+    hardware_agents: list[dict] = []
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
