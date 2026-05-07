@@ -1,77 +1,78 @@
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <ESPmDNS.h>
-#include <WebSocketsClient.h> 
+#include <WebSocketsClient.h>
 #include <HTTPClient.h>
-#include <time.h>            // Added for NTP
+#include <time.h>
 #include "driver/i2s.h"
 
-// --- CONFIGURATION ---
-const char* ssid = "CLICKNETWORKS";
-const char* password = "hotguy112345";
-const char* backend_url = "http://192.168.1.155:8081/api/v1/agents";
-const char* master_ws_url = "192.168.1.155"; 
-const int master_ws_port = 8082;            
+// ---------------- CONFIG ----------------
+const char* ssid = "NISHA_CES";
+const char* password = "CES@2470";
+
+const char* backend_url = "http://api.buildwave.pro/api/v1/agents";
+
+// Cloudflare WebSocket endpoint
+const char* ws_host = "m01ws.buildwave.pro"; // No "wss://"
+const int ws_port = 443;
+const char* ws_path = "/";
 
 const char* api_key = "nisha_master_key_2024_secure";
 const char* agent_id = "AUDIO-NODE-01";
 
-// --- HEARTBEAT TIMER ---
-unsigned long lastHeartbeat = 0;
-const unsigned long heartbeatInterval = 20000; // 20 seconds
+// ---------------- STATE ----------------
+WebSocketsClient webSocket;
+bool isConnected = false;
 
-// --- I2S PINS ---
+unsigned long lastHeartbeat = 0;
+const unsigned long heartbeatInterval = 20000;
+
+// ---------------- I2S ----------------
 #define I2S_WS   15
 #define I2S_SCK  14
 #define I2S_SD   13
 #define I2S_RX_PORT I2S_NUM_0
 
-// --- AUDIO SETTINGS ---
 #define SAMPLE_RATE 16000
 #define CHUNK_SIZE 8000
+
 static int32_t sampleBuffer[CHUNK_SIZE];
 static int16_t pcm16[CHUNK_SIZE];
 
-WebSocketsClient webSocket;
-bool isConnected = false;
-
-// --- REGISTRATION ---
+// ---------------- BACKEND ----------------
 void registerWithBackend() {
     HTTPClient http;
     http.begin(backend_url);
     http.addHeader("Content-Type", "application/json");
     http.addHeader("Authorization", "Bearer " + String(api_key));
 
-    String payload = "{";
-    payload += "\"agent_id\": \"" + String(agent_id) + "\",";
-    payload += "\"master_id\": \"MASTER_001\",";
-    payload += "\"hardware_type\": \"ESP32-S3-AUDIO\",";
-    payload += "\"capabilities\": {\"audio\": true, \"video\": false}";
-    payload += "}";
+    String payload =
+        String("{\"agent_id\":\"") + agent_id +
+        "\",\"master_id\":\"MASTER_001\",\"hardware_type\":\"ESP32-S3-AUDIO\",\"capabilities\":{\"audio\":true}}";
 
     int code = http.POST(payload);
     Serial.printf("Registration Response: %d\n", code);
     http.end();
 }
 
-// --- NISHA BINARY PROTOCOL (24-BYTE HEADER) ---
+// ---------------- NISHA BINARY PROTOCOL (24-BYTE HEADER) ----------------
 void sendNishaFrame(uint8_t type, uint8_t* payload, size_t len) {
     if (!isConnected) return;
 
     uint8_t header[24];
     memset(header, 0, 24);
     
-    header[0] = 'N';                
-    header[1] = 'I';                
+    header[0] = 'N';                // Magic
+    header[1] = 'I';                // Magic
     header[2] = 0x01;               // version
     header[3] = type;               // 0x03 for Audio
-    header[4] = 0x03;               // priority (0x03 = CONTINUOUS for streams)
+    header[4] = 0x03;               // priority (Continuous)
     header[5] = 0x00;               
     
     static uint32_t seq = 0;
     uint32_t seq_be = __builtin_bswap32(seq++);
     memcpy(&header[6], &seq_be, 4);
 
-    // Get current NTP time
     time_t now;
     time(&now);
     uint64_t ts_be = __builtin_bswap64((uint64_t)now * 1000);
@@ -85,7 +86,7 @@ void sendNishaFrame(uint8_t type, uint8_t* payload, size_t len) {
 
     size_t totalSize = 24 + len;
     uint8_t* frame = (uint8_t*)malloc(totalSize);
-    if (!frame) return; // OOM safety
+    if (!frame) return;
 
     memcpy(frame, header, 24);
     memcpy(frame + 24, payload, len);
@@ -94,31 +95,50 @@ void sendNishaFrame(uint8_t type, uint8_t* payload, size_t len) {
     free(frame);
 }
 
-// --- WEBSOCKET HANDLER ---
+// ---------------- WEBSOCKET EVENT ----------------
 void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
+
     switch(type) {
+
         case WStype_DISCONNECTED:
             isConnected = false;
-            Serial.println("[WS] Disconnected");
+            Serial.printf("[WS] Disconnected ❌ (reason: %s)\n", payload ? (char*)payload : "no-payload");
             break;
-        case WStype_CONNECTED: {
-            Serial.println("[WS] Connected to Master");
-            // MODERN HANDSHAKE: Send JSON
-            String handshake = "{\"type\":\"HANDSHAKE\",\"agent_id\":\"" + String(agent_id) + "\",\"mode\":\"AGENT\"}";
-            webSocket.sendTXT(handshake);
-            delay(100); // Give Master a moment to register the agent
+
+        case WStype_CONNECTED:
+            Serial.printf("[WS] Connected ✅ to: %s\n", payload ? (char*)payload : "unknown");
             isConnected = true;
+
+            webSocket.sendTXT(
+                "{\"type\":\"HANDSHAKE\",\"agent_id\":\"" + String(agent_id) + "\",\"mode\":\"AGENT\"}"
+            );
             break;
-        }
+
         case WStype_TEXT:
-            Serial.printf("[WS] Command: %s\n", payload);
+            Serial.printf("[WS] MSG: %s\n", payload);
+            break;
+
+        case WStype_ERROR:
+            Serial.printf("[WS] ERROR: %s\n", payload ? (char*)payload : "unknown");
+            break;
+
+        case WStype_PING:
+            Serial.println("[WS] PING");
+            break;
+
+        case WStype_PONG:
+            Serial.println("[WS] PONG");
+            break;
+
+        default:
+            Serial.printf("[WS] Unknown event: %d\n", type);
             break;
     }
 }
 
-// --- I2S SETUP ---
+// ---------------- I2S ----------------
 void setupI2S() {
-    i2s_config_t i2s_config = {
+    i2s_config_t config = {
         .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX),
         .sample_rate = SAMPLE_RATE,
         .bits_per_sample = I2S_BITS_PER_SAMPLE_32BIT,
@@ -129,75 +149,87 @@ void setupI2S() {
         .dma_buf_len = 128
     };
 
-    i2s_pin_config_t pin_config = {
+    i2s_pin_config_t pins = {
         .bck_io_num = I2S_SCK,
-        .ws_io_num  = I2S_WS,
+        .ws_io_num = I2S_WS,
         .data_out_num = I2S_PIN_NO_CHANGE,
-        .data_in_num  = I2S_SD
+        .data_in_num = I2S_SD
     };
 
-    i2s_driver_install(I2S_RX_PORT, &i2s_config, 0, NULL);
-    i2s_set_pin(I2S_RX_PORT, &pin_config);
-    i2s_start(I2S_RX_PORT);
+    i2s_driver_install(I2S_RX_PORT, &config, 0, NULL);
+    i2s_set_pin(I2S_RX_PORT, &pins);
 }
 
+// ---------------- SETUP ----------------
 void setup() {
     Serial.begin(115200);
-    
+    Serial.setDebugOutput(true); // Enable low-level SSL/TCP debug output
+    delay(100);
+    Serial.println("\n\n=== NISHA Audio Node Starting ===");
+
     WiFi.begin(ssid, password);
     while (WiFi.status() != WL_CONNECTED) {
         delay(500);
         Serial.print(".");
     }
-    Serial.println("\nWiFi connected");
+    Serial.printf("\nWiFi connected - IP: %s\n", WiFi.localIP().toString().c_str());
 
-    // Sync time with NTP (Essential for backend acceptance)
-    configTime(0, 0, "pool.ntp.org", "time.google.com");
-    Serial.println("Waiting for NTP time sync...");
+    configTime(0, 0, "pool.ntp.org");
+    Serial.println("Syncing time...");
+
     time_t now = time(nullptr);
-    while (now < 8 * 3600 * 2) {
+    while (now < 100000) {
         delay(500);
         now = time(nullptr);
     }
-    Serial.println("Time synchronized");
+    Serial.println("Time synced");
 
     if (!MDNS.begin("audio-node-01")) {
-        Serial.println("Error setting up MDNS!");
+        Serial.println("MDNS failed");
     }
 
     registerWithBackend();
     setupI2S();
 
-    // CONNECT TO ROOT "/" INSTEAD OF "/ws"
-    webSocket.begin(master_ws_url, master_ws_port, "/");
+    // --- WebSocket over SSL (Cloudflare requires HTTPS) ---
+    // Port 443 + beginSSL. Pass NULL CA cert so the library skips verification.
+    Serial.printf("[WS] Connecting to wss://%s:%d%s\n", ws_host, ws_port, ws_path);
+    webSocket.beginSSL(ws_host, ws_port, ws_path);
+    webSocket.setExtraHeaders("Origin: https://m01ws.buildwave.pro");
     webSocket.onEvent(webSocketEvent);
-    webSocket.setReconnectInterval(5000);
+    webSocket.setReconnectInterval(3000);
+    // Ping every 15s, timeout 3s, disconnect after 2 missed pongs
+    webSocket.enableHeartbeat(15000, 3000, 2);
 }
 
+// ---------------- LOOP ----------------
 void loop() {
     webSocket.loop();
 
     if (isConnected) {
-        // Send Periodic Heartbeat (Every 10s for testing)
-        if (millis() - lastHeartbeat > 10000) {
+
+        // heartbeat
+        if (millis() - lastHeartbeat > heartbeatInterval) {
             lastHeartbeat = millis();
-            String hb = "{\"type\":\"HEARTBEAT\",\"agent_id\":\"" + String(agent_id) + "\",\"battery\":100,\"rssi\":-50}";
-            webSocket.sendTXT(hb);
-            Serial.println("[WS] Heartbeat sent");
+
+            webSocket.sendTXT(
+                "{\"type\":\"HEARTBEAT\",\"agent_id\":\"" + String(agent_id) + "\"}"
+            );
         }
 
-        /* --- TEMPORARILY DISABLED FOR DEBUGGING ---
+        // audio
         size_t bytesRead = 0;
-        i2s_read(I2S_RX_PORT, (void*)sampleBuffer, sizeof(sampleBuffer), &bytesRead, portMAX_DELAY);
-        
+        i2s_read(I2S_RX_PORT, sampleBuffer, sizeof(sampleBuffer), &bytesRead, portMAX_DELAY);
+
         if (bytesRead > 0) {
             int samples = bytesRead / 4;
+
             for (int i = 0; i < samples; i++) {
-                pcm16[i] = (int16_t)(sampleBuffer[i] >> 11);
+                pcm16[i] = sampleBuffer[i] >> 11;
             }
+
+            // Wrapped in NISHA Header
             sendNishaFrame(0x03, (uint8_t*)pcm16, samples * 2);
         }
-        ------------------------------------------- */
-        delay(10); // Small yield
     }
 }
