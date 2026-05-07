@@ -38,23 +38,29 @@ async def lifespan(app: FastAPI):
     logger.info(f"Initializing BufferManager (Limit: {settings.buffer_ram_limit_mb}MB)")
     buffer_manager = BufferManager()
 
-    # 2. Start Agent WS Server (Port 8081)
+    # 2. Start Hardware Ingestion Worker
+    logger.info("Starting Hardware Ingestion Worker...")
+    hw_worker = HardwareIngestionWorker(stream_queue, telemetry_queue)
+    hw_task = asyncio.create_task(hw_worker.start(settings.hardware_agents))
+
+    # 3. Start Agent WS Server (Port 8081)
     logger.info(f"Opening Agent Interface on port {settings.agent_ws_port}")
     from nisha_master.interfaces.dashboard import metrics_store
-    agent_server = AgentWebSocketServer(settings.agent_ws_port, stream_queue, telemetry_queue, metrics_store)
+    agent_server = AgentWebSocketServer(
+        settings.agent_ws_port, 
+        stream_queue, 
+        telemetry_queue, 
+        metrics_store,
+        hw_worker=hw_worker
+    )
     metrics_store.agent_server = agent_server  # Link for command relay
     agent_task = asyncio.create_task(agent_server.start())
 
-    # 3. Start Backend WSS Client Background Task
+    # 4. Start Backend WSS Client Background Task
     logger.info(f"Connecting to Backend: {settings.backend_ws_url}")
     backend_client = BackendWebSocketClient(stream_queue, buffer_manager, agent_server)
     backend_client.metrics_store = metrics_store
     backend_task = asyncio.create_task(backend_client.connect_and_run())
-
-    # 4. Start Hardware Ingestion Worker
-    logger.info("Starting Hardware Ingestion Worker...")
-    hw_worker = HardwareIngestionWorker(stream_queue, telemetry_queue)
-    hw_task = asyncio.create_task(hw_worker.start(settings.hardware_agents))
 
     # 4. Start Triangulation Background Task (Placeholder)
     # logger.info("Starting Triangulation Engine background routines...")

@@ -31,18 +31,27 @@ class HardwareIngestionWorker:
     async def start(self, hardware_agents: list[dict]):
         self._running = True
         for agent in hardware_agents:
-            agent_id = agent.get("id")
-            if not agent_id:
-                continue
-                
-            if agent.get("type") == "VIDEO":
-                logger.info(f"Starting Video Ingestion Worker for hardware agent: {agent_id} at {agent.get('url')}")
-                task = asyncio.create_task(self._consume_mjpeg(agent))
-                self._tasks.append(task)
-            elif agent.get("type") == "AUDIO":
-                logger.info(f"Audio hardware agent registered: {agent_id} (Awaiting implementation)")
-                # Audio hardware agents usually push via WebSocket/HTTP POST, 
-                # but if they have a stream URL, we could pull it here.
+            await self.add_agent(agent)
+
+    async def add_agent(self, agent_config: dict):
+        """Dynamically add and start a hardware agent worker."""
+        agent_id = agent_config.get("id")
+        if not agent_id or not self._running:
+            return
+            
+        # Don't start duplicate tasks for the same ID
+        if agent_id in self._sequence_map and any(not t.done() for t in self._tasks if getattr(t, 'agent_id', None) == agent_id):
+            logger.info(f"Worker already running for agent: {agent_id}")
+            return
+
+        if agent_config.get("type") == "VIDEO":
+            logger.info(f"Starting Video Ingestion Worker for hardware agent: {agent_id} at {agent_config.get('url')}")
+            task = asyncio.create_task(self._consume_mjpeg(agent_config))
+            # Tag the task for tracking
+            setattr(task, 'agent_id', agent_id)
+            self._tasks.append(task)
+        elif agent_config.get("type") == "AUDIO":
+            logger.info(f"Audio hardware agent registered: {agent_id} (Awaiting implementation)")
 
     async def stop(self):
         self._running = False

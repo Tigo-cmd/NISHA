@@ -6,12 +6,17 @@
 #include "esp_camera.h"
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <WebSocketsClient.h>
 #include "esp_http_server.h"
 
 // --- CONFIGURATION ---
 const char* ssid = "NISHA_CES";
 const char* password = "CES@2470";
-const char* backend_url = "http://api.buildwave.pro/api/v1/agents";
+
+// Master Node Details (mDNS)
+const char* master_ws_host = "nisha-master.local";
+const int master_ws_port = 8082;
+const char* backend_url = "https://api.buildwave.pro/api/v1/agents";
 const char* api_key = "nisha_master_key_2024_secure";
 const char* master_id = "MASTER_001";
 const char* agent_name = "ESP32-SENTINEL-01";
@@ -134,9 +139,45 @@ void startCameraServer(){
   }
 }
 
+WebSocketsClient webSocket;
+bool isWSConnected = false;
+unsigned long lastHeartbeat = 0;
+const unsigned long heartbeatInterval = 60000; // 60 seconds
+unsigned long lastWSHeartbeat = 0;
+const unsigned long wsHeartbeatInterval = 10000; // 10 seconds for Master link
+
+void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
+  switch(type) {
+    case WStype_DISCONNECTED:
+      Serial.println("[WS] Disconnected from Master ❌");
+      isWSConnected = false;
+      break;
+    case WStype_CONNECTED:
+      Serial.printf("[WS] Connected to Master ✅ at %s\n", payload);
+      isWSConnected = true;
+      
+      // Handshake with ID and Stream URL
+      String mac = WiFi.macAddress();
+      mac.replace(":", "");
+      String ip = WiFi.localIP().toString();
+      
+      String handshake = "{\"type\":\"HANDSHAKE\",\"agent_id\":\"" + mac + "\",\"mode\":\"HARDWARE\",\"stream_url\":\"http://" + ip + ":81/stream\"}";
+      webSocket.sendTXT(handshake);
+      break;
+    case WStype_TEXT:
+      Serial.printf("[WS] Message from Master: %s\n", payload);
+      break;
+  }
+}
+
 void setup() {
   Serial.begin(115200);
   
+  // Print ID (MAC)
+  String mac = WiFi.macAddress();
+  mac.replace(":", "");
+  Serial.printf("\n=== NISHA Cam Node: %s ===\n", mac.c_str());
+
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
   config.ledc_timer = LEDC_TIMER_0;
@@ -183,15 +224,32 @@ void setup() {
     Serial.print(".");
   }
   Serial.println("\nWiFi connected");
-  Serial.print("Stream Link: http://");
-  Serial.print(WiFi.localIP());
-  Serial.println(":81/stream");
+  
+  // Initialize WebSocket connection to Master
+  webSocket.begin(master_ws_host, master_ws_port, "/");
+  webSocket.onEvent(webSocketEvent);
+  webSocket.setReconnectInterval(5000);
 
   registerWithBackend();
-
   startCameraServer();
+  lastHeartbeat = millis();
 }
 
 void loop() {
+  webSocket.loop();
+  
+  // Periodic Heartbeat to Backend (Direct)
+  if (millis() - lastHeartbeat > heartbeatInterval) {
+    registerWithBackend();
+    lastHeartbeat = millis();
+  }
+
+  // Periodic Heartbeat to Master (via WS)
+  if (isWSConnected && (millis() - lastWSHeartbeat > wsHeartbeatInterval)) {
+    String mac = WiFi.macAddress();
+    mac.replace(":", "");
+    webSocket.sendTXT("{\"type\":\"HEARTBEAT\",\"agent_id\":\"" + mac + "\"}");
+    lastWSHeartbeat = millis();
+  }
   delay(1);
 }

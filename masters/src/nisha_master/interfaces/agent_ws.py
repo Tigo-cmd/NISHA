@@ -26,11 +26,12 @@ HEADER_SIZE = 24
 
 
 class AgentWebSocketServer:
-    def __init__(self, port: int, stream_queue: asyncio.Queue, telemetry_queue: asyncio.Queue, metrics_store):
+    def __init__(self, port: int, stream_queue: asyncio.Queue, telemetry_queue: asyncio.Queue, metrics_store, hw_worker=None):
         self.port = port
         self.stream_queue = stream_queue
         self.telemetry_queue = telemetry_queue
         self.metrics_store = metrics_store
+        self.hw_worker = hw_worker
         self.active_agents: Dict[str, ServerConnection] = {}
         self.total_inbound_bytes = 0
 
@@ -51,12 +52,23 @@ class AgentWebSocketServer:
                             agent_mode = handshake.get("mode", "AGENT")
                             self.active_agents[agent_id] = websocket
                             print(f"[DEBUG] Handshake successful: {agent_id} (mode: {agent_mode})")
+                            
+                            # Support for dynamic hardware stream registration
+                            stream_url = handshake.get("stream_url")
+                            if stream_url and self.hw_worker:
+                                asyncio.create_task(self.hw_worker.add_agent({
+                                    "id": agent_id,
+                                    "url": stream_url,
+                                    "type": "VIDEO" # Assume VIDEO for cam handshakes
+                                }))
+
                             # Initialize agent stats
                             if agent_id not in self.metrics_store.agent_stats:
                                 self.metrics_store.agent_stats[agent_id] = {
                                     "agent_id": agent_id,
                                     "mode": agent_mode,
                                     "device_info": handshake.get("device_info", {}),
+                                    "stream_url": stream_url
                                 }
                             continue
                     except json.JSONDecodeError:

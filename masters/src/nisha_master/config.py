@@ -30,10 +30,9 @@ class Settings(BaseSettings):
     rssi_path_loss_exponent: float = 2.5
     rssi_reference_power: float = -45.0  # RSSI at 1 meter
 
-    # Hardware Agents (ESP32-CAM, etc)
-    # List of dicts: [{"id": "CAM_01", "url": "http://192.168.1.115:81/stream", "type": "VIDEO"}]
-    # {"id": "ESP32-CAM-01", "url": "http://192.168.1.115:81/stream", "type": "VIDEO"}
-    hardware_agents: list[dict] = []
+    hardware_agents: list[dict] = [
+        {"id": "A4CF1208C4BC", "url": "http://192.168.18.20:81/stream", "type": "VIDEO"}
+    ]
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
