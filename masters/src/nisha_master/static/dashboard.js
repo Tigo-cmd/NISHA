@@ -3,8 +3,9 @@
  */
 
 // Configuration
-const REFRESH_RATE = 1000; // 1s polling for new clips
-const WS_URL = `ws://${window.location.host}/api/ws/dashboard`;
+const REFRESH_RATE = 1000;
+const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+const WS_URL = `${protocol}//${window.location.host}/api/ws/dashboard`;
 const API_URL = `${window.location.origin}/api`;
 
 // State
@@ -54,8 +55,8 @@ class RealtimeAudioPlayer {
             source.connect(this.ctx.destination);
 
             const now = this.ctx.currentTime;
-            // If we are behind, jump forward to now + lookahead
-            if (this.startTime < now) {
+            // If we are behind or too far ahead (drift), jump to now + lookahead
+            if (this.startTime < now || (this.startTime - now) > 1.0) {
                 this.startTime = now + this.lookahead;
             }
             
@@ -78,10 +79,54 @@ const selectedStatusEl = document.getElementById('selectedAgentStatus');
 const streamDisplayEl = document.getElementById('streamDisplay');
 const emptyStateEl = document.getElementById('emptyState');
 const videoEl = document.getElementById('mainVideo');
+const videoCanvas = document.getElementById('videoCanvas');
 const audioEl = document.getElementById('mainAudio');
 const flipBtn = document.getElementById('flipCamBtn');
 const locationBadge = document.getElementById('locationBadge');
 const coordsText = document.getElementById('coordsText');
+
+function renderRawRGB(base64, width, height) {
+    try {
+        if (!base64 || !videoCanvas) return;
+        const binary = atob(base64);
+        const len = binary.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+
+        const w = width || 160;
+        const h = height || 120;
+        videoCanvas.width = w;
+        videoCanvas.height = h;
+        
+        const ctx = videoCanvas.getContext('2d');
+        const imageData = ctx.createImageData(w, h);
+        const data = imageData.data;
+
+        // RGB -> RGBA + Vertical Flip
+        // Iterate rows in reverse for vertical flip
+        for (let y = 0; y < h; y++) {
+            const sourceRow = (h - 1 - y) * w * 3; // Flip: take from bottom of source
+            const destRow = y * w * 4;
+            
+            for (let x = 0; x < w; x++) {
+                const s = sourceRow + (x * 3);
+                const d = destRow + (x * 4);
+                
+                // Input is RGB, Canvas is RGBA
+                data[d]     = bytes[s];     // Red
+                data[d + 1] = bytes[s + 1]; // Green
+                data[d + 2] = bytes[s + 2]; // Blue
+                data[d + 3] = 255;          // Alpha
+            }
+        }
+
+        ctx.putImageData(imageData, 0, 0);
+        videoEl.classList.add('hidden');
+        videoCanvas.classList.remove('hidden');
+    } catch (e) {
+        console.error("[Dashboard] renderRawRGB failed:", e);
+    }
+}
 
 // Badges
 const badgeClips = document.getElementById('badgeClips');
@@ -208,8 +253,15 @@ async function fetchMedia(agentId, type) {
 
         if (data.base64) {
             if (type === 'video') {
-                const mime = data.mime || 'image/jpeg';
-                videoEl.src = `data:${mime};base64,${data.base64}`;
+                if (data.mime === 'video/raw_rgb') {
+                    renderRawRGB(data.base64, data.width, data.height);
+                } else {
+                    const mime = data.mime || 'image/jpeg';
+                    videoEl.src = `data:${mime};base64,${data.base64}`;
+                    videoEl.classList.remove('hidden');
+                    const canvas = document.getElementById('videoCanvas');
+                    if (canvas) canvas.classList.add('hidden');
+                }
                 badgeClips.innerText = `LIVE`;
                 videoPlaying = true;
             } else {
@@ -217,10 +269,9 @@ async function fetchMedia(agentId, type) {
                     realtimePlayer.playChunk(data.base64);
                     document.getElementById('audioSection').classList.remove('hidden');
                     badgeAudioQueue.innerText = `STREAMING`;
-                } else {
+                } else if (data.base64) {
                     const mime = data.mime || 'audio/wav';
-                    const blob = base64ToBlob(data.base64, mime);
-                    const url = URL.createObjectURL(blob);
+                    const url = `data:${mime};base64,${data.base64}`;
                     audioQueue.push(url);
                     badgeAudioQueue.innerText = `${audioQueue.length} QUEUED`;
                     if (!audioPlaying) playNextAudio();
@@ -233,13 +284,7 @@ async function fetchMedia(agentId, type) {
     }
 }
 
-function base64ToBlob(b64, type) {
-    const bin = atob(b64);
-    const len = bin.length;
-    const arr = new Uint8Array(len);
-    for (let i = 0; i < len; i++) arr[i] = bin.charCodeAt(i);
-    return new Blob([arr], { type });
-}
+
 
 // ---------- Playback Control ----------
 
@@ -324,6 +369,10 @@ ws.onmessage = (event) => {
     } else if (msg.type === 'MEDIA_UPDATE') {
         if (selectedAgentId === msg.agent_id) {
             fetchMedia(msg.agent_id, msg.media_type);
+        }
+    } else if (msg.type === 'VIDEO_FRAME') {
+        if (selectedAgentId === msg.agent_id) {
+            renderRawRGB(msg.base64, msg.width, msg.height);
         }
     } else if (msg.agents) {
         agents = msg.agents;
