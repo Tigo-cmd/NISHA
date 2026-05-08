@@ -144,51 +144,32 @@ class AgentWebSocketServer:
                             except: pass
                         
                         if frame_meta.get('format') == 'raw_rgb':
-                            # Convert raw RGB pixels to BMP for dashboard display (no opencv needed)
-                            try:
-                                import numpy as np
-                                w = frame_meta.get('width', 80)
-                                h = frame_meta.get('height', 60)
-                                expected = w * h * 3
-                                if len(payload) >= expected:
-                                    img = np.frombuffer(payload[:expected], np.uint8).reshape((h, w, 3))
-                                    img_bgr = np.flip(img, axis=0)[:, :, ::-1].copy()
-                                    row_size = w * 3
-                                    padding = (4 - row_size % 4) % 4
-                                    pixel_data = bytearray()
-                                    for row in range(h):
-                                        pixel_data.extend(img_bgr[row].tobytes())
-                                        pixel_data.extend(b'\x00' * padding)
-                                    
-                                    pixel_data_size = len(pixel_data)
-                                    file_size = 54 + pixel_data_size
-                                    bmp_header = struct.pack('<2sIHHI', b'BM', file_size, 0, 0, 54)
-                                    dib_header = struct.pack('<IiiHHIIiiII', 40, w, h, 1, 24, 0, pixel_data_size, 2835, 2835, 0, 0)
-                                    bmp_data = bmp_header + dib_header + bytes(pixel_data)
-                                    stats["latest_video"] = base64.b64encode(bmp_data).decode('utf-8')
-                                    stats["_video_mime"] = "image/bmp"
-                                else:
-                                    stats["latest_video"] = base64.b64encode(payload).decode('utf-8')
-                                    stats["_video_mime"] = "image/jpeg"
-                            except Exception as conv_err:
-                                print(f"[DEBUG] RGB->BMP conversion failed: {conv_err}")
-                                stats["latest_video"] = base64.b64encode(payload).decode('utf-8')
-                                stats["_video_mime"] = "image/jpeg"
+                            # Hyper-Streaming: Broadcast frame directly to dashboard via WS
+                            # This bypasses the need for an extra HTTP fetch
+                            b64_frame = base64.b64encode(payload).decode('utf-8')
+                            stats["latest_video"] = b64_frame
+                            stats["_video_mime"] = "video/raw_rgb"
+                            stats["video_width"] = frame_meta.get('width', 160)
+                            stats["video_height"] = frame_meta.get('height', 120)
+                            
+                            from nisha_master.interfaces.dashboard import ws_manager
+                            asyncio.create_task(ws_manager.broadcast({
+                                "type": "VIDEO_FRAME",
+                                "agent_id": agent_id,
+                                "base64": b64_frame,
+                                "width": stats["video_width"],
+                                "height": stats["video_height"]
+                            }))
                         else:
-                            # Assume JPEG or other browser-compatible format
+                            # Standard update for JPEGs
                             stats["latest_video"] = base64.b64encode(payload).decode('utf-8')
                             stats["_video_mime"] = "image/jpeg"
-
-                        stats["video_updated_at"] = time.time()
-                        stats["stream_type"] = "LIVE VIDEO"
-                        
-                        # Broadcast instant update to Dashboard
-                        from nisha_master.interfaces.dashboard import ws_manager
-                        asyncio.create_task(ws_manager.broadcast({
-                            "type": "MEDIA_UPDATE",
-                            "agent_id": agent_id,
-                            "media_type": "video"
-                        }))
+                            from nisha_master.interfaces.dashboard import ws_manager
+                            asyncio.create_task(ws_manager.broadcast({
+                                "type": "MEDIA_UPDATE",
+                                "agent_id": agent_id,
+                                "media_type": "video"
+                            }))
                         print(f"[DEBUG] Received VIDEO CLIP from {agent_id}: {len(payload)} bytes")
                     
                     elif stream_type == 0x03: # AUDIO (10s/30s clip)
