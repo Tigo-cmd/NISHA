@@ -1,0 +1,124 @@
+{
+  "theme": "dark",
+  "archetype": "Archetype 2 (Performance Pro) mixed with Archetype 7 (Electric & Neon)",
+  "aesthetic": "Cyberpunk-meets-military-grade-security, high-tech tactical command center. Rigid grids, stark contrast, glowing indicators over deep void backgrounds.",
+  "colors": {
+    "background": {
+      "default": "#0A0A0F",
+      "surface": "#12121A",
+      "surface_elevated": "#1A1A24"
+    },
+    "agent_mode": {
+      "primary": "#00F0FF",
+      "glow": "rgba(0, 240, 255, 0.5)",
+      "surface_active": "rgba(0, 240, 255, 0.05)",
+      "border": "rgba(0, 240, 255, 0.3)"
+    },
+    "master_mode": {
+      "primary": "#B026FF",
+      "glow": "rgba(176, 38, 255, 0.5)",
+      "surface_active": "rgba(176, 38, 255, 0.05)",
+      "border": "rgba(176, 38, 255, 0.3)"
+    },
+    "neutral": {
+      "border": "#2A2A35",
+      "border_hover": "#3A3A4A",
+      "text_primary": "#FFFFFF",
+      "text_secondary": "#A0A0B0",
+      "text_muted": "#606070"
+    },
+    "status": {
+      "danger": "#FF3B30",
+      "success": "#34C759",
+      "warning": "#FFCC00"
+    }
+  },
+  "typography": {
+    "fonts": {
+      "headings": "Space Grotesk, sans-serif",
+      "body": "Inter, sans-serif",
+      "mono": "JetBrains Mono, monospace"
+    },
+    "scale": {
+      "h1": "text-4xl md:text-5xl font-bold tracking-tighter",
+      "h2": "text-2xl md:text-3xl font-semibold tracking-tight",
+      "h3": "text-xl font-medium tracking-tight",
+      "body": "text-base font-normal leading-relaxed",
+      "mono_data": "text-sm font-mono tracking-widest uppercase",
+      "label": "text-xs font-bold tracking-[0.2em] uppercase"
+    },
+    "rules": [
+      "Use Space Grotesk for all major headings and mode titles.",
+      "Use Inter for descriptions and settings.",
+      "Use JetBrains Mono for IP addresses, MAC addresses, connection coordinates, logs, and live data feeds.",
+      "All overlines and data labels must be Uppercase + Wide Spacing."
+    ]
+  },
+  "spacing_layout": {
+    "grid_system": "Strict bento-box 'Control Room' grid layout for dashboards. Avoid rounded soft bubbles; prefer hard-edged rectangles or minimal 4px border-radius.",
+    "container_padding": "p-6 md:p-8",
+    "widget_spacing": "gap-4 md:gap-6",
+    "rules": [
+      "Containers with borders MUST have internal padding (p-6) to prevent text collision.",
+      "Every pixel utilized in the dashboard. Use h-full on children.",
+      "Optical alignment over geometrical for tactical crosshairs or icons next to text."
+    ]
+  },
+  "components": {
+    "surfaces": {
+      "base_card": "bg-[#12121A] border border-[#2A2A35] rounded-md shadow-none",
+      "agent_card_active": "bg-[#12121A] border border-[#00F0FF]/30 shadow-[0_0_15px_rgba(0,240,255,0.1)] rounded-md",
+      "master_card_active": "bg-[#12121A] border border-[#B026FF]/30 shadow-[0_0_15px_rgba(176,38,255,0.1)] rounded-md"
+    },
+    "buttons": {
+      "agent_primary": "bg-transparent border-2 border-[#00F0FF] text-[#00F0FF] hover:bg-[#00F0FF]/10 transition-colors uppercase tracking-widest font-bold",
+      "master_primary": "bg-transparent border-2 border-[#B026FF] text-[#B026FF] hover:bg-[#B026FF]/10 transition-colors uppercase tracking-widest font-bold",
+      "danger": "bg-transparent border border-[#FF3B30] text-[#FF3B30] hover:bg-[#FF3B30]/10",
+      "secondary": "bg-[#1A1A24] text-white hover:bg-[#2A2A35] border border-[#2A2A35]"
+    },
+    "indicators": {
+      "live_dot": "h-2 w-2 rounded-full animate-pulse",
+      "mesh_line": "1px solid glowing line connecting nodes"
+    },
+    "toggles": {
+      "agent_toggle": "data-[state=checked]:bg-[#00F0FF] data-[state=unchecked]:bg-[#2A2A35]",
+      "master_toggle": "data-[state=checked]:bg-[#B026FF] data-[state=unchecked]:bg-[#2A2A35]"
+    }
+  },
+  "motion_interactions": {
+    "radar_sweep": "Use a rotating conic-gradient mask for radar scanning effect in Agent mode.",
+    "pulse": "Active nodes and connection statuses MUST pulse gently (opacity 0.5 to 1).",
+    "glitch": "Apply subtle CSS glitch effects on hover for primary CTAs or during role switching to emphasize the 'tactical cyber' theme.",
+    "hover": "Hover states must explicitly set text color and lighten the background slightly. E.g. hover:bg-[#1A1A24] hover:text-white"
+  },
+  "icons": {
+    "library": "@expo/vector-icons (Ionicons, MaterialCommunityIcons, Feather) for Expo, or lucide-react if building Web MVP.",
+    "style": "Use sharp, unrounded variants where possible (e.g., Ionicons 'sharp' variants). Focus on crosshairs, shields, radar, network nodes, and server stacks.",
+    "sizing": "Dashboards use dense icon sizing (16px - 20px). Hero actions use 24px - 32px."
+  },
+  "media": {
+    "image_urls": [
+      {
+        "url": "https://images.unsplash.com/photo-1746470621424-94e81fcffcb6?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2NDF8MHwxfHNlYXJjaHw0fHxjeWJlcnB1bmslMjBuZXR3b3JrJTIwdGVjaG5vbG9neXxlbnwwfHx8fDE3NzY5MzI0MTJ8MA&ixlib=rb-4.1.0&q=85",
+        "category": "splash_background",
+        "description": "Glowing blue and purple lines against a dark background. Perfect for the splash screen or mandatory mode selection background to represent the mesh network."
+      },
+      {
+        "url": "https://images.pexels.com/photos/30547606/pexels-photo-30547606.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "category": "master_dashboard_visual",
+        "description": "Abstract digital artwork featuring futuristic cubes with glowing neon lights. Use as a subtle header background for the Master Dashboard."
+      }
+    ],
+    "guidelines": "Overlay images heavily with bg-[#0A0A0F]/80 to ensure terminal/data text remains highly legible against the background. Do NOT use placeholder images."
+  },
+  "testing": {
+    "attributes": "All interactive elements, buttons, and mode selectors MUST have a data-testid attribute formatted as kebab-case, role-based. e.g., data-testid='select-agent-mode-btn', data-testid='sensor-toggle-audio'."
+  },
+  "instructions_to_main_agent": [
+    "This is a mobile app UI, but you are building the React/HTML MVP. Structure it with a mobile viewport container (max-w-md mx-auto min-h-screen) if deployed on web.",
+    "Do NOT use pure white or generic blue. Follow the Agent (Cyan) and Master (Purple) strict color split.",
+    "Apply 'font-mono' to all metric numbers, coordinates, and system logs to enforce the military-tactical look.",
+    "The Mode Selection screen should be a 50/50 split or dual-card layout highlighting the Cyan vs Purple contrast.",
+    "Never use Shadcn's default 'rounded-xl' soft look. Override all radii to 'rounded-sm' or 'rounded-none' for a hardware/terminal aesthetic."
+  ]
+}

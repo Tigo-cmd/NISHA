@@ -44,14 +44,16 @@ masters/.env
 masters/logs/
 
 # Mobile Agent
-Nisha-mobile-agent/frontend/node_modules/
-Nisha-mobile-agent/frontend/.expo/
-Nisha-mobile-agent/frontend/.env
-Nisha-mobile-agent/frontend/build/
-Nisha-mobile-agent/frontend/dist/
-Nisha-mobile-agent/frontend/web-build/
-Nisha-mobile-agent/.expo/
-Nisha-mobile-agent/.env
+mobile-agent/frontend/node_modules/
+mobile-agent/frontend/.expo/
+mobile-agent/frontend/.env
+mobile-agent/frontend/build/
+mobile-agent/frontend/dist/
+mobile-agent/frontend/web-build/
+mobile-agent/frontend/android/app/build/
+mobile-agent/frontend/android/.gradle/
+mobile-agent/.expo/
+mobile-agent/.env
 
 # ESP32 Firmware
 agents/esp32_s3_agent/.pio/
