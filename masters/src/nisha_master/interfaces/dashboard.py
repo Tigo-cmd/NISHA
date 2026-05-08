@@ -65,6 +65,15 @@ class DashboardWebSocketManager:
     def disconnect(self, websocket: WebSocket):
         self.active_connections.remove(websocket)
 
+    async def broadcast(self, message: Dict[str, Any]):
+        """Send a generic JSON message to all connected dashboards."""
+        if self.active_connections:
+            for connection in self.active_connections:
+                try:
+                    await connection.send_json(message)
+                except Exception:
+                    pass
+
     async def broadcast_snapshot(self):
         """Broadcasts metrics snapshot every 100ms as per the spec."""
         while True:
@@ -105,7 +114,12 @@ async def get_agent_media(agent_id: str, media_type: str):
     stats = metrics_store.agent_stats[agent_id]
     if media_type == "video":
         mime = stats.get("_video_mime", "image/jpeg")
-        return {"base64": stats.get("latest_video"), "mime": mime}
+        return {
+            "base64": stats.get("latest_video"), 
+            "mime": mime,
+            "width": stats.get("video_width", 160),
+            "height": stats.get("video_height", 120)
+        }
     elif media_type == "audio":
         mime = stats.get("_audio_mime", "audio/wav")
         return {
