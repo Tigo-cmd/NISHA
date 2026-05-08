@@ -18,6 +18,55 @@ const videoQueue = [];
 const audioQueue = [];
 let videoPlaying = false;
 let audioPlaying = false;
+
+// --- Real-time Audio Stream Player (Web Audio API) ---
+class RealtimeAudioPlayer {
+    constructor() {
+        this.ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+        this.startTime = 0;
+        this.lookahead = 0.05; // 50ms buffer to prevent crackle
+    }
+
+    playChunk(base64Data) {
+        try {
+            if (this.ctx.state === 'suspended') this.ctx.resume();
+
+            const binary = atob(base64Data);
+            const len = binary.length;
+            // S16LE requires 2 bytes per sample. Ensure even length.
+            const validLen = len % 2 === 0 ? len : len - 1;
+            if (validLen <= 0) return;
+
+            const bytes = new Uint8Array(validLen);
+            for (let i = 0; i < validLen; i++) bytes[i] = binary.charCodeAt(i);
+            
+            const int16 = new Int16Array(bytes.buffer);
+            const float32 = new Float32Array(int16.length);
+            for (let i = 0; i < int16.length; i++) {
+                float32[i] = int16[i] / 32768.0;
+            }
+
+            const audioBuffer = this.ctx.createBuffer(1, float32.length, 16000);
+            audioBuffer.getChannelData(0).set(float32);
+
+            const source = this.ctx.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(this.ctx.destination);
+
+            const now = this.ctx.currentTime;
+            // If we are behind, jump forward to now + lookahead
+            if (this.startTime < now) {
+                this.startTime = now + this.lookahead;
+            }
+            
+            source.start(this.startTime);
+            this.startTime += audioBuffer.duration;
+        } catch (e) {
+            console.warn("[RealtimeAudio] Playback error:", e);
+        }
+    }
+}
+const realtimePlayer = new RealtimeAudioPlayer();
 let currentVideoUrl = null;
 let currentAudioUrl = null;
 
@@ -159,16 +208,24 @@ async function fetchMedia(agentId, type) {
 
         if (data.base64) {
             if (type === 'video') {
-                videoEl.src = `data:image/jpeg;base64,${data.base64}`;
+                const mime = data.mime || 'image/jpeg';
+                videoEl.src = `data:${mime};base64,${data.base64}`;
                 badgeClips.innerText = `LIVE`;
                 videoPlaying = true;
             } else {
-                const blob = base64ToBlob(data.base64, 'audio/wav');
-                const url = URL.createObjectURL(blob);
-                audioQueue.push(url);
-                badgeAudioQueue.innerText = `${audioQueue.length} QUEUED`;
-                if (!audioPlaying) playNextAudio();
-                document.getElementById('audioSection').classList.remove('hidden');
+                if (data.is_live) {
+                    realtimePlayer.playChunk(data.base64);
+                    document.getElementById('audioSection').classList.remove('hidden');
+                    badgeAudioQueue.innerText = `STREAMING`;
+                } else {
+                    const mime = data.mime || 'audio/wav';
+                    const blob = base64ToBlob(data.base64, mime);
+                    const url = URL.createObjectURL(blob);
+                    audioQueue.push(url);
+                    badgeAudioQueue.innerText = `${audioQueue.length} QUEUED`;
+                    if (!audioPlaying) playNextAudio();
+                    document.getElementById('audioSection').classList.remove('hidden');
+                }
             }
         }
     } catch (err) {
@@ -261,12 +318,17 @@ setInterval(fetchAgents, REFRESH_RATE);
 // Connect WebSocket for real-time traffic graph if needed
 const ws = new WebSocket(WS_URL);
 ws.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    // Real-time updates could also trigger fetchMedia faster
-    if (data.agents) {
-        agents = data.agents;
+    const msg = JSON.parse(event.data);
+    if (msg.type === 'SNAPSHOT') {
+        updateDashboard(msg.payload);
+    } else if (msg.type === 'MEDIA_UPDATE') {
+        if (selectedAgentId === msg.agent_id) {
+            fetchMedia(msg.agent_id, msg.media_type);
+        }
+    } else if (msg.agents) {
+        agents = msg.agents;
         updateSidebar();
-        updateMainStats(data);
+        updateMainStats(msg);
         if (selectedAgentId) {
             const agent = agents.find(a => a.agent_id === selectedAgentId);
             if (agent) updateAgentView(agent);

@@ -104,9 +104,15 @@ async def get_agent_media(agent_id: str, media_type: str):
     
     stats = metrics_store.agent_stats[agent_id]
     if media_type == "video":
-        return {"base64": stats.get("latest_video")}
+        mime = stats.get("_video_mime", "image/jpeg")
+        return {"base64": stats.get("latest_video"), "mime": mime}
     elif media_type == "audio":
-        return {"base64": stats.get("latest_audio")}
+        mime = stats.get("_audio_mime", "audio/wav")
+        return {
+            "base64": stats.get("latest_audio"), 
+            "mime": mime,
+            "is_live": stats.get("is_live_audio", False)
+        }
     
     return {"error": "Invalid media type"}
 

@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Set, Union
 import base64
+import numpy as np
 
 from fastapi import WebSocket
 from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -239,13 +240,28 @@ class ConnectionManager:
             confidence = 1.0
             
             if ai_processor:
-                # 1. AI Inference
-                behavior, confidence = await ai_processor.process_video_frame(frame.payload)
+                # 1. AI Inference (pass metadata for raw_rgb handling)
+                behavior, confidence = await ai_processor.process_video_frame(frame.payload, frame.metadata)
             
             # 2. Persistence
             if db_writer:
                 import uuid
                 logger.info(f"Ingesting VIDEO CLIP from {agent_id} ({len(frame.payload)} bytes)")
+                
+                # Convert raw RGB to JPEG for storage if needed
+                video_data_for_storage = frame.payload
+                if frame.metadata.get('format') == 'raw_rgb':
+                    try:
+                        import cv2
+                        w = frame.metadata.get('width', 160)
+                        h = frame.metadata.get('height', 120)
+                        img = np.frombuffer(frame.payload[:w*h*3], np.uint8).reshape((h, w, 3))
+                        img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+                        _, jpeg_data = cv2.imencode('.jpg', img_bgr, [cv2.IMWRITE_JPEG_QUALITY, 70])
+                        video_data_for_storage = jpeg_data.tobytes()
+                    except Exception as e:
+                        logger.warning(f"Failed to convert raw RGB to JPEG: {e}")
+                
                 await db_writer.add_item(VideoEventModel, {
                     "id": str(uuid.uuid4()),
                     "agent_id": agent_id,
@@ -254,7 +270,7 @@ class ConnectionManager:
                     "behavior": behavior.lower() if behavior else "nonviolence",
                     "confidence": confidence,
                     "location_zone": frame.metadata.get("zone"),
-                    "video_data": base64.b64encode(frame.payload).decode('utf-8'),
+                    "video_data": base64.b64encode(video_data_for_storage).decode('utf-8'),
                     "metadata": frame.metadata
                 })
 
@@ -351,35 +367,40 @@ class ConnectionManager:
                     
                     # 1. Real Audio Classification via AI module
                     if ai_processor:
-                        classification, confidence, transcription = await ai_processor.process_audio_frame(frame.payload)
+                        classification, confidence, transcription = await ai_processor.process_audio_frame(frame.payload, frame.metadata)
                         # Extract intensity for the dashboard pulse (scale to 0-100)
-                        import numpy as np
-                        samples = np.frombuffer(frame.payload, dtype=np.int16).astype(np.float32)
-                        if len(samples) > 0:
-                            rms = np.sqrt(np.mean(samples**2))
-                            level = int(min(rms / 327.68, 100)) # Simple scale
-                            self._last_audio_level[agent_id] = level
+                        if frame.metadata.get('format') != 'aac':
+                            try:
+                                import numpy as np
+                                samples = np.frombuffer(frame.payload, dtype=np.int16).astype(np.float32)
+                                if len(samples) > 0:
+                                    rms = np.sqrt(np.mean(samples**2))
+                                    level = int(min(rms / 327.68, 100)) # Simple scale
+                                    self._last_audio_level[agent_id] = level
+                            except: pass
                     else:
                         classification, confidence, transcription = "AmbientNoise", 1.0, None
                     
-                    # 2. Wrap Raw PCM in a WAV Header for Browser Playback
-                    # (16kHz, 16-bit, Mono)
-                    import struct
-                    sample_rate = 16000
-                    bits_per_sample = 16
-                    channels = 1
-                    byte_rate = sample_rate * channels * bits_per_sample // 8
-                    block_align = channels * bits_per_sample // 8
-                    data_size = len(frame.payload)
+                    # 2. Prepare audio data (WAV wrapping only for Raw PCM)
+                    if frame.metadata.get('format') == 'aac':
+                        encoded_audio = base64.b64encode(frame.payload).decode('utf-8')
+                    else:
+                        import struct
+                        sample_rate = 16000
+                        bits_per_sample = 16
+                        channels = 1
+                        byte_rate = sample_rate * channels * bits_per_sample // 8
+                        block_align = channels * bits_per_sample // 8
+                        data_size = len(frame.payload)
+                        
+                        wav_header = struct.pack(
+                            '<4sI4s4sIHHIIHH4sI',
+                            b'RIFF', 36 + data_size, b'WAVE', b'fmt ', 16, 1, channels,
+                            sample_rate, byte_rate, block_align, bits_per_sample, b'data', data_size
+                        )
+                        wav_payload = wav_header + frame.payload
+                        encoded_audio = base64.b64encode(wav_payload).decode('utf-8')
                     
-                    wav_header = struct.pack(
-                        '<4sI4s4sIHHIIHH4sI',
-                        b'RIFF', 36 + data_size, b'WAVE', b'fmt ', 16, 1, channels,
-                        sample_rate, byte_rate, block_align, bits_per_sample, b'data', data_size
-                    )
-                    wav_payload = wav_header + frame.payload
-                    encoded_audio = base64.b64encode(wav_payload).decode('utf-8')
-
                     # 3. Persistence - Only save to DB if it's a meaningful event (not ambient)
                     if db_writer and classification != "AmbientNoise":
                         import uuid

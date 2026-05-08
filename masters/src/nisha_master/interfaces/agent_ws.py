@@ -135,33 +135,103 @@ class AgentWebSocketServer:
 
                     elif stream_type == 0x02: # VIDEO (10s/30s clip)
                         payload = bytes(view[HEADER_SIZE + meta_len : HEADER_SIZE + meta_len + payload_len])
-                        stats["latest_video_raw"] = base64.b64encode(payload).decode('utf-8')
-                        stats["latest_video"] = stats["latest_video_raw"]
+                        
+                        # Parse metadata to check if this is raw RGB pixel data
+                        frame_meta = {}
+                        if meta_len > 0:
+                            try:
+                                frame_meta = json.loads(bytes(view[HEADER_SIZE : HEADER_SIZE + meta_len]).decode('utf-8'))
+                            except: pass
+                        
+                        if frame_meta.get('format') == 'raw_rgb':
+                            # Convert raw RGB pixels to BMP for dashboard display (no opencv needed)
+                            try:
+                                import numpy as np
+                                w = frame_meta.get('width', 80)
+                                h = frame_meta.get('height', 60)
+                                expected = w * h * 3
+                                if len(payload) >= expected:
+                                    img = np.frombuffer(payload[:expected], np.uint8).reshape((h, w, 3))
+                                    img_bgr = np.flip(img, axis=0)[:, :, ::-1].copy()
+                                    row_size = w * 3
+                                    padding = (4 - row_size % 4) % 4
+                                    pixel_data = bytearray()
+                                    for row in range(h):
+                                        pixel_data.extend(img_bgr[row].tobytes())
+                                        pixel_data.extend(b'\x00' * padding)
+                                    
+                                    pixel_data_size = len(pixel_data)
+                                    file_size = 54 + pixel_data_size
+                                    bmp_header = struct.pack('<2sIHHI', b'BM', file_size, 0, 0, 54)
+                                    dib_header = struct.pack('<IiiHHIIiiII', 40, w, h, 1, 24, 0, pixel_data_size, 2835, 2835, 0, 0)
+                                    bmp_data = bmp_header + dib_header + bytes(pixel_data)
+                                    stats["latest_video"] = base64.b64encode(bmp_data).decode('utf-8')
+                                    stats["_video_mime"] = "image/bmp"
+                                else:
+                                    stats["latest_video"] = base64.b64encode(payload).decode('utf-8')
+                                    stats["_video_mime"] = "image/jpeg"
+                            except Exception as conv_err:
+                                print(f"[DEBUG] RGB->BMP conversion failed: {conv_err}")
+                                stats["latest_video"] = base64.b64encode(payload).decode('utf-8')
+                                stats["_video_mime"] = "image/jpeg"
+                        else:
+                            # Assume JPEG or other browser-compatible format
+                            stats["latest_video"] = base64.b64encode(payload).decode('utf-8')
+                            stats["_video_mime"] = "image/jpeg"
+
                         stats["video_updated_at"] = time.time()
-                        stats["stream_type"] = "VIDEO CLIP"
+                        stats["stream_type"] = "LIVE VIDEO"
+                        
+                        # Broadcast instant update to Dashboard
+                        from nisha_master.interfaces.dashboard import ws_manager
+                        asyncio.create_task(ws_manager.broadcast({
+                            "type": "MEDIA_UPDATE",
+                            "agent_id": agent_id,
+                            "media_type": "video"
+                        }))
                         print(f"[DEBUG] Received VIDEO CLIP from {agent_id}: {len(payload)} bytes")
                     
                     elif stream_type == 0x03: # AUDIO (10s/30s clip)
                         payload = bytes(view[HEADER_SIZE + meta_len : HEADER_SIZE + meta_len + payload_len])
                         
-                        # Wrap Raw PCM in a WAV Header for Dashboard Playback
-                        # (16kHz, 16-bit, Mono)
-                        sample_rate = 16000
-                        bits_per_sample = 16
-                        channels = 1
-                        data_size = len(payload)
-                        byte_rate = sample_rate * channels * bits_per_sample // 8
-                        block_align = channels * bits_per_sample // 8
+                        # Parse metadata to check if this is already encoded audio (e.g. AAC)
+                        frame_meta = {}
+                        if meta_len > 0:
+                            try:
+                                frame_meta = json.loads(bytes(view[HEADER_SIZE : HEADER_SIZE + meta_len]).decode('utf-8'))
+                            except: pass
                         
-                        wav_header = struct.pack(
-                            '<4sI4s4sIHHIIHH4sI',
-                            b'RIFF', 36 + data_size, b'WAVE', b'fmt ', 16, 1, channels,
-                            sample_rate, byte_rate, block_align, bits_per_sample, b'data', data_size
-                        )
-                        stats["latest_audio"] = base64.b64encode(wav_header + payload).decode('utf-8')
+                        if frame_meta.get('format') == 'aac':
+                            # Already encoded as AAC/M4A, just store it
+                            stats["latest_audio"] = base64.b64encode(payload).decode('utf-8')
+                            stats["_audio_mime"] = "audio/m4a"
+                        elif frame_meta.get('format') == 'pcm_s16le':
+                            # Raw PCM Stream chunk (Low Latency)
+                            stats["latest_audio"] = base64.b64encode(payload).decode('utf-8')
+                            stats["_audio_mime"] = "audio/pcm"
+                            stats["is_live_audio"] = True
+                        else:
+                            # Wrap Raw PCM in a WAV Header for Dashboard Playback
+                            # (16kHz, 16-bit, Mono)
+                            sample_rate = 16000
+                            bits_per_sample = 16
+                            channels = 1
+                            data_size = len(payload)
+                            byte_rate = sample_rate * channels * bits_per_sample // 8
+                            block_align = channels * bits_per_sample // 8
+                            
+                            wav_header = struct.pack(
+                                '<4sI4s4sIHHIIHH4sI',
+                                b'RIFF', 36 + data_size, b'WAVE', b'fmt ', 16, 1, channels,
+                                sample_rate, byte_rate, block_align, bits_per_sample, b'data', data_size
+                            )
+                            stats["latest_audio"] = base64.b64encode(wav_header + payload).decode('utf-8')
+                            stats["_audio_mime"] = "audio/wav"
+                            stats["is_live_audio"] = False
+                            
                         stats["audio_updated_at"] = time.time()
                         stats["stream_type"] = "AUDIO CLIP"
-                        print(f"[DEBUG] Received AUDIO CLIP from {agent_id}: {len(payload)} bytes (WAV Encoded)")
+                        print(f"[DEBUG] Received AUDIO CLIP from {agent_id}: {len(payload)} bytes")
 
                     elif stream_type == 0x04: # LOCATION
                         payload = bytes(view[HEADER_SIZE + meta_len : HEADER_SIZE + meta_len + payload_len])

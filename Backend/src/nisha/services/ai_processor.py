@@ -73,7 +73,7 @@ class AIProcessor:
         except Exception as e:
             logger.error(f"Error loading AI models: {e}")
 
-    async def process_video_frame(self, frame_data: bytes) -> Tuple[Optional[str], float]:
+    async def process_video_frame(self, frame_data: bytes, metadata: dict = None) -> Tuple[Optional[str], float]:
         """Process a raw video frame (bytes) and return (behavior, confidence)."""
         if not self.detector:
             return None, 0.0
@@ -82,34 +82,50 @@ class AIProcessor:
         return await asyncio.get_event_loop().run_in_executor(
             self.executor, 
             self._process_frame_sync, 
-            frame_data
+            frame_data,
+            metadata
         )
 
-    def _process_frame_sync(self, data: bytes) -> Tuple[Optional[str], float]:
+    def _process_frame_sync(self, data: bytes, metadata: dict = None) -> Tuple[Optional[str], float]:
         """Synchronous processing for either a static frame or a video clip."""
         try:
-            # Check for common video magic numbers (e.g., MP4/MOV) or just try decoding as image
-            nparr = np.frombuffer(data, np.uint8)
-            frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            frame = None
             
-            # If frame is None, it might be a video clip (mp4/mov)
-            if frame is None:
-                import tempfile
-                import os
-                with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
-                    tmp.write(data)
-                    tmp_path = tmp.name
-                
-                try:
-                    cap = cv2.VideoCapture(tmp_path)
-                    # Grab a frame from the middle of the clip for behavior analysis
-                    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                    cap.set(cv2.CAP_PROP_POS_FRAMES, total_frames // 2)
-                    ret, frame = cap.read()
-                    cap.release()
-                finally:
-                    if os.path.exists(tmp_path):
-                        os.remove(tmp_path)
+            # Handle raw RGB pixel data from mobile agents
+            if metadata and metadata.get('format') == 'raw_rgb':
+                w = metadata.get('width', 160)
+                h = metadata.get('height', 120)
+                expected_len = w * h * 3
+                if len(data) >= expected_len:
+                    frame = np.frombuffer(data[:expected_len], np.uint8).reshape((h, w, 3))
+                    # RGB -> BGR for OpenCV
+                    frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                else:
+                    logger.warning(f"Raw RGB data size mismatch: got {len(data)}, expected {expected_len}")
+                    return None, 0.0
+            else:
+                # Check for common video magic numbers (e.g., MP4/MOV) or just try decoding as image
+                nparr = np.frombuffer(data, np.uint8)
+                frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            
+                # If frame is None, it might be a video clip (mp4/mov)
+                if frame is None:
+                    import tempfile
+                    import os
+                    with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
+                        tmp.write(data)
+                        tmp_path = tmp.name
+                    
+                    try:
+                        cap = cv2.VideoCapture(tmp_path)
+                        # Grab a frame from the middle of the clip for behavior analysis
+                        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                        cap.set(cv2.CAP_PROP_POS_FRAMES, total_frames // 2)
+                        ret, frame = cap.read()
+                        cap.release()
+                    finally:
+                        if os.path.exists(tmp_path):
+                            os.remove(tmp_path)
 
             if frame is None:
                 return None, 0.0
@@ -125,10 +141,15 @@ class AIProcessor:
             logger.error(f"Error processing visual data: {e}")
             return None, 0.0
 
-    async def process_audio_frame(self, audio_data: bytes) -> tuple[str, float, Optional[str]]:
-        """Process raw audio bytes and return (classification, confidence, transcription)."""
+    async def process_audio_frame(self, audio_data: bytes, metadata: dict = None) -> tuple[str, float, Optional[str]]:
+        """Process audio bytes and return (classification, confidence, transcription)."""
         if not self.audio_classifier:
             return "AmbientNoise", 1.0, None
+
+        # TODO: If metadata.get('format') == 'aac', decode to PCM first
+        # For now, we assume the classifier can handle it or we log the format
+        if metadata and metadata.get('format') == 'aac':
+            logger.debug("Received AAC audio frame, passing to classifier (may require decoding)")
 
         return await asyncio.get_event_loop().run_in_executor(
             self.executor,
