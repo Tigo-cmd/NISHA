@@ -1,20 +1,16 @@
-[DEBUG] Relay error: 'DashboardWebSocketManager' object has no attribute 'broadcast'
-[DEBUG] Relay error: 'DashboardWebSocketManager' object has no attribute 'broadcast'
-INFO:nisha_master.interfaces.backend_client:Received from Backend: {'type': 'NODE_DATA', 'agent_id': 'SENTINEL-1507', 'master_id': 'MASTER_001', 'battery': 100, 'signal_strength': -50, 'audio_level': 30, 'timestamp': 1778237165.942624, 'gps_lat': 5.4769651, 'gps_lng': 7.5398732}
-INFO:nisha_master.interfaces.backend_client:Received from Backend: {'type': 'NODE_DATA', 'agent_id': 'SENTINEL-1507', 'master_id': 'MASTER_001', 'battery': 100, 'signal_strength': -50, 'audio_level': 30, 'timestamp': 1778237165.9426649, 'gps_lat': 5.4769651, 'gps_lng': 7.5398732}
-[DEBUG] Relay error: 'DashboardWebSocketManager' object has no attribute 'broadcast'
-[DEBUG] Receiving location: 5.4769651 7.5398732
-[DEBUG] Relay error: 'DashboardWebSocketManager' object has no attribute 'broadcast'
-[DEBUG] Relay error: 'DashboardWebSocketManager' object has no attribute 'broadcast'
-INFO:nisha_master.interfaces.backend_client:Received from Backend: {'type': 'NODE_DATA', 'agent_id': 'SENTINEL-1507', 'master_id': 'MASTER_001', 'battery': 100, 'signal_strength': -50, 'audio_level': 31, 'timestamp': 1778237166.2915673, 'gps_lat': 5.4769651, 'gps_lng': 7.5398732}
-INFO:     2605:59c1:1b8e:da10:1f0a:e381:79a8:de70:0 - "GET /api/stats HTTP/1.1" 200 OK
-[DEBUG] Relay error: 'DashboardWebSocketManager' object has no attribute 'broadcast'
-INFO:     2605:59c1:1b8e:da10:1f0a:e381:79a8:de70:0 - "GET /api/agent/SENTINEL-1507/media/video HTTP/1.1" 200 OK
-[DEBUG] Relay error: 'DashboardWebSocketManager' object has no attribute 'broadcast'
-[DEBUG] Relay error: 'DashboardWebSocketManager' object has no attribute 'broadcast'
-[DEBUG] Relay error: 'DashboardWebSocketManager' object has no attribute 'broadcast'
-[DEBUG] Relay error: 'DashboardWebSocketManager' object has no attribute 'broadcast'
-[DEBUG] Relay error: 'DashboardWebSocketManager' object has no attribute 'broadcast'
-[DEBUG] Relay error: 'DashboardWebSocketManager' object has no attribute 'broadcast'
-[DEBUG] Relay error: 'DashboardWebSocketManager' object has no attribute 'broadcast'
-[DEBUG] Receiving location: 5.4769651 7.5398732
+/home/tigo/Arduino/Smart_Waste_sorting/Smart_Waste_sorting.ino: In function 'void webSocketEvent(WStype_t, uint8_t*, size_t)':
+/home/tigo/Arduino/Smart_Waste_sorting/Smart_Waste_sorting.ino:167:10: error: jump to case label
+  167 |     case WStype_TEXT:
+      |          ^~~~~~~~~~~
+/home/tigo/Arduino/Smart_Waste_sorting/Smart_Waste_sorting.ino:164:14: note:   crosses initialization of 'String handshake'
+  164 |       String handshake = "{\"type\":\"HANDSHAKE\",\"agent_id\":\"" + mac + "\",\"mode\":\"HARDWARE\",\"stream_url\":\"http://" + ip + ":81/stream\"}";
+      |              ^~~~~~~~~
+/home/tigo/Arduino/Smart_Waste_sorting/Smart_Waste_sorting.ino:162:14: note:   crosses initialization of 'String ip'
+  162 |       String ip = WiFi.localIP().toString();
+      |              ^~
+/home/tigo/Arduino/Smart_Waste_sorting/Smart_Waste_sorting.ino:160:14: note:   crosses initialization of 'String mac'
+  160 |       String mac = WiFi.macAddress();
+      |              ^~~
+exit status 1
+
+Compilation error: jump to case label
