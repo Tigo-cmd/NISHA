@@ -23,7 +23,13 @@ import {
     Trash2,
 } from "lucide-react";
 import { WaveformVisualizer } from "./WaveformVisualizer";
+import dynamic from 'next/dynamic';
 import type { Agent } from "@/types";
+
+const AgoraVideoPlayer = dynamic(() => import("./AgoraVideoPlayer").then(mod => mod.AgoraVideoPlayer), {
+    ssr: false,
+    loading: () => <div className="w-full h-full bg-black/50 animate-pulse" />
+});
 
 function StatusDot({ status }: { status: string }) {
     const color =
@@ -252,7 +258,7 @@ function AudioTab({ agent }: { agent: Agent }) {
     );
 }
 
-function VideoTab({ agent }: { agent: Agent }) {
+function VideoTab({ agent, masterUrl }: { agent: Agent, masterUrl?: string }) {
     const [isStreaming, setIsStreaming] = useState(false);
     const [streamLoading, setStreamLoading] = useState(false);
     const [latestVideo, setLatestVideo] = useState<string | null>(null);
@@ -311,29 +317,19 @@ function VideoTab({ agent }: { agent: Agent }) {
     return (
         <div className="space-y-4">
             <div className="aspect-video bg-black rounded-lg overflow-hidden flex items-center justify-center border border-foreground/5 relative">
-                {latestVideo && !isStreaming ? (
-                    <video 
-                        src={latestVideo} 
-                        controls 
-                        className="w-full h-full object-cover"
-                        autoPlay={false}
+                {isStreaming ? (
+                    <AgoraVideoPlayer 
+                        channelName={`nisha_stream_${agent.id}`} 
+                        agentId={agent.id} 
+                        masterUrl={masterUrl}
                     />
                 ) : (
                     <div className="text-center text-muted-foreground">
                         <Video size={32} className="mx-auto mb-2 opacity-30" />
                         <p className="text-xs font-mono uppercase">
-                            {isStreaming ? "Live Feed Active" : "No Live Feed"}
+                            No Live Feed
                         </p>
-                        {!latestVideo && <p className="text-[10px] text-muted-foreground mt-1">Connect to stream to view live feed</p>}
-                    </div>
-                )}
-                
-                {isStreaming && (
-                    <div className="absolute inset-0 bg-neutral-900 flex items-center justify-center">
-                         <div className="text-center">
-                            <div className="w-8 h-8 border-2 border-foreground/20 border-t-foreground rounded-full animate-spin mx-auto mb-4" />
-                            <p className="text-[10px] font-mono text-muted-foreground uppercase">Receiving Live Stream...</p>
-                         </div>
+                        <p className="text-[10px] text-muted-foreground mt-1">Connect to stream to view live feed</p>
                     </div>
                 )}
             </div>
@@ -494,6 +490,9 @@ export default function AgentDrawer() {
     const { drawerOpen, selectedAgentId, agents, setDrawerOpen } = useStore();
     const [activeTab, setActiveTab] = useState<TabId>("overview");
     const agent = agents.find((a) => a.id === selectedAgentId);
+    const { masters } = useStore();
+    const master = agents.find(a => a.id === selectedAgentId) ? masters.find(m => m.id === agent?.masterId) : null;
+    const masterUrl = master?.ip ? (master.ip.startsWith('http') ? master.ip : `https://${master.ip}`) : undefined;
 
     useEffect(() => {
         setActiveTab("overview");
@@ -566,7 +565,7 @@ export default function AgentDrawer() {
                         <div className="flex-1 overflow-y-auto p-5">
                             {activeTab === "overview" && <OverviewTab agent={agent} />}
                             {activeTab === "audio" && <AudioTab agent={agent} />}
-                            {activeTab === "video" && <VideoTab agent={agent} />}
+                            {activeTab === "video" && <VideoTab agent={agent} masterUrl={masterUrl} />}
                             {activeTab === "location" && <LocationTab agent={agent} />}
                             {activeTab === "analytics" && <AnalyticsTab agent={agent} />}
                         </div>

@@ -152,6 +152,15 @@ export const HiddenCamera = forwardRef<HiddenCameraHandle, HiddenCameraProps>(
         }
     }, [currentFacing]);
 
+    useEffect(() => {
+        const sensors = useAgentStore.getState().sensors;
+        if (engine.current) {
+            console.log(`[Agora] Syncing mute state: Video=${!sensors.video}, Audio=${!sensors.audio}`);
+            engine.current.muteLocalVideoStream(!sensors.video);
+            engine.current.muteLocalAudioStream(!sensors.audio);
+        }
+    }, [useAgentStore(state => state.sensors.video), useAgentStore(state => state.sensors.audio)]);
+
     useImperativeHandle(ref, () => ({
         captureFrame: async () => null, // Not used with Agora
         stopRecording: () => {},

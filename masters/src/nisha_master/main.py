@@ -11,6 +11,7 @@ import os
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 
 from nisha_master.config import settings
 from nisha_master.core.buffer import BufferManager
@@ -129,6 +130,15 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=f"NISHA Master ({settings.master_id}) Local UI",
     lifespan=lifespan
+)
+
+# Enable CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Include Dashboard REST and WS routes

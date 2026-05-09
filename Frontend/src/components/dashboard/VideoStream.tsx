@@ -5,9 +5,16 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/Badge';
 import { Play, Pause, AlertTriangle, Camera, Layers } from 'lucide-react';
+import { useStore } from '@/store/useStore';
 import { apiService } from '@/services/apiService';
 import { websocketService } from '@/services/websocketService';
 import { WebSocketMessageType } from '@/types';
+import dynamic from 'next/dynamic';
+
+const AgoraVideoPlayer = dynamic(() => import('./AgoraVideoPlayer').then(mod => mod.AgoraVideoPlayer), {
+    ssr: false,
+    loading: () => <div className="w-full h-full bg-black/50 animate-pulse flex items-center justify-center text-[10px] font-mono text-white/30 uppercase tracking-widest">Loading Stream...</div>
+});
 
 interface VideoAnalysis {
   label: string;
@@ -82,6 +89,10 @@ export const VideoStream: React.FC<VideoStreamProps> = ({
     setCurrentClip(null);
   };
 
+  const { masters } = useStore();
+  const master = masters.find(m => nodeId.startsWith(m.id) || m.id === 'm01');
+  const masterUrl = master?.ip ? (master.ip.startsWith('http') ? master.ip : `https://${master.ip}`) : undefined;
+
   return (
     <Card className="w-full max-w-full shadow-xl border border-foreground/5 bg-surface/70 rounded-xl overflow-hidden">
       <CardHeader className="bg-surface border-b border-foreground/5 p-4">
@@ -110,34 +121,17 @@ export const VideoStream: React.FC<VideoStreamProps> = ({
 
       <CardContent className="p-4 space-y-4">
         <div className="relative aspect-video bg-black rounded-lg overflow-hidden border border-foreground/10 flex items-center justify-center shadow-inner">
-          {currentClip ? (
-            <img
-              ref={imageRef}
-              key={currentClip}
-              src={currentClip}
-              alt="Live Feed"
-              className="w-full h-full object-contain"
+          {isStreaming ? (
+            <AgoraVideoPlayer 
+                channelName={`nisha_stream_${nodeId}`} 
+                agentId={nodeId} 
+                masterUrl={masterUrl}
             />
           ) : (
             <div className="text-center text-muted-foreground">
               <Camera className="w-8 h-8 mx-auto mb-2 opacity-20" />
               <p className="text-xs font-mono uppercase tracking-widest">
-                {isStreaming ? "WAITING FOR FEED..." : "STREAM OFFLINE"}
-              </p>
-            </div>
-          )}
-
-          {/* Analysis Overlay if present */}
-          {analysis && currentClip && (
-            <div className="absolute bottom-4 left-4 bg-black/80 backdrop-blur border border-white/10 px-3 py-2 rounded-lg">
-              <p className="text-xs text-white font-bold font-mono uppercase flex items-center gap-2">
-                {analysis.label === "Violence" ? <AlertTriangle className="w-3 h-3 text-red-500" /> : "✓"} 
-                <span className={analysis.label === "Violence" ? "text-red-500" : "text-emerald-500"}>
-                  {analysis.label}
-                </span>
-              </p>
-              <p className="text-[10px] font-mono text-gray-400 mt-0.5">
-                CONF: {(analysis.confidence * 100).toFixed(0)}%
+                STREAM OFFLINE
               </p>
             </div>
           )}

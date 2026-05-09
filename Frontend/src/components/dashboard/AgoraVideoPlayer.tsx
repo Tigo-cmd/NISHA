@@ -7,9 +7,10 @@ import { apiService } from "@/services/apiService";
 interface AgoraVideoPlayerProps {
     channelName: string;
     agentId: string;
+    masterUrl?: string;
 }
 
-export const AgoraVideoPlayer: React.FC<AgoraVideoPlayerProps> = ({ channelName, agentId }) => {
+export const AgoraVideoPlayer: React.FC<AgoraVideoPlayerProps> = ({ channelName, agentId, masterUrl }) => {
     const client = useRef<IAgoraRTCClient | null>(null);
     const [videoTrack, setVideoTrack] = useState<IRemoteVideoTrack | null>(null);
     const [audioTrack, setAudioTrack] = useState<IRemoteAudioTrack | null>(null);
@@ -18,11 +19,13 @@ export const AgoraVideoPlayer: React.FC<AgoraVideoPlayerProps> = ({ channelName,
 
     useEffect(() => {
         if (!channelName) return;
+        let isMounted = true;
 
         const init = async () => {
             try {
                 setStatus("Fetching token...");
-                const data = await apiService.getAgoraToken(channelName);
+                const data = await apiService.getAgoraToken(channelName, masterUrl);
+                if (!isMounted) return;
 
                 if (data.error) {
                     setStatus(`Token Error: ${data.error}`);
@@ -32,35 +35,59 @@ export const AgoraVideoPlayer: React.FC<AgoraVideoPlayerProps> = ({ channelName,
                 client.current = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
 
                 client.current.on("user-published", async (user, mediaType) => {
-                    await client.current?.subscribe(user, mediaType);
-                    if (mediaType === "video") {
-                        setVideoTrack(user.videoTrack || null);
-                    }
-                    if (mediaType === "audio") {
-                        user.audioTrack?.play();
-                        setAudioTrack(user.audioTrack || null);
+                    if (!isMounted) return;
+                    if (client.current?.connectionState === "CONNECTED") {
+                        try {
+                            await client.current.subscribe(user, mediaType);
+                            if (!isMounted) return;
+                            if (mediaType === "video") setVideoTrack(user.videoTrack || null);
+                            if (mediaType === "audio") {
+                                user.audioTrack?.play();
+                                setAudioTrack(user.audioTrack || null);
+                            }
+                        } catch (e) {}
                     }
                 });
 
                 client.current.on("user-unpublished", (user) => {
-                    if (user.uid === 0) { // Assuming agent uid is 0 or we handle logic
-                        setVideoTrack(null);
-                        setAudioTrack(null);
+                    setVideoTrack(null);
+                    setAudioTrack(null);
+                });
+
+                client.current.on("connection-state-change", (curState) => {
+                    if (curState === "CONNECTED" && isMounted) {
+                        client.current?.remoteUsers.forEach(async (user) => {
+                            try {
+                                await client.current?.subscribe(user, user.hasVideo ? "video" : "audio");
+                                if (!isMounted) return;
+                                if (user.hasVideo) setVideoTrack(user.videoTrack || null);
+                                if (user.hasAudio) {
+                                    user.audioTrack?.play();
+                                    setAudioTrack(user.audioTrack || null);
+                                }
+                            } catch (e) {}
+                        });
                     }
                 });
 
                 await client.current.join(data.appId, channelName, data.token, null);
+                if (!isMounted) {
+                    client.current.leave();
+                    return;
+                }
                 setStatus("Live Feed Active");
-                console.log(`[Agora] Joined channel: ${channelName}`);
             } catch (error) {
-                console.error("[Agora] Setup failed:", error);
-                setStatus("Connection Failed");
+                if (isMounted) {
+                    console.error("[Agora] Setup failed:", error);
+                    setStatus("Connection Failed");
+                }
             }
         };
 
         init();
 
         return () => {
+            isMounted = false;
             client.current?.leave();
             client.current?.removeAllListeners();
             videoTrack?.stop();

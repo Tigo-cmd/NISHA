@@ -7,7 +7,12 @@ import { Badge } from "@/components/ui/Badge";
 import { apiService } from "@/services/apiService";
 import { cn } from "@/lib/utils";
 import { WaveformVisualizer } from "@/components/dashboard/WaveformVisualizer";
-import { AgoraVideoPlayer } from "@/components/dashboard/AgoraVideoPlayer";
+import dynamic from 'next/dynamic';
+
+const AgoraVideoPlayer = dynamic(() => import("@/components/dashboard/AgoraVideoPlayer").then(mod => mod.AgoraVideoPlayer), {
+    ssr: false,
+    loading: () => <div className="w-full aspect-video bg-black/50 animate-pulse flex items-center justify-center text-[10px] font-mono text-white/30 uppercase tracking-widest">Loading Surveillance...</div>
+});
 import {
     ArrowLeft,
     Settings,
@@ -26,6 +31,7 @@ export default function AgentDetailPage() {
     const { agents, masters, securityEvents } = useStore();
     const agent = agents.find((a) => a.id === id);
     const master = agent ? masters.find((m) => m.id === agent.masterId) : null;
+    const masterUrl = master?.ip ? (master.ip.startsWith('http') ? master.ip : `https://${master.ip}`) : undefined;
     const agentEvents = securityEvents.filter((e) => e.agentId === id).slice(0, 5);
 
     const [emergencyLoading, setEmergencyLoading] = React.useState(false);
@@ -107,6 +113,7 @@ export default function AgentDetailPage() {
                         <AgoraVideoPlayer 
                             channelName={`nisha_stream_${id}`} 
                             agentId={id} 
+                            masterUrl={masterUrl}
                         />
                     </div>
 

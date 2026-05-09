@@ -15,7 +15,8 @@ import {
 const toast = (props: any) => console.log('Toast:', props);
 
 // Base URL for API calls
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8081';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.buildwave.pro';
+const AGORA_TOKEN_URL = 'https://m01.buildwave.pro/api/agora/token';
 const API_KEY = process.env.NEXT_PUBLIC_API_KEY || 'nisha_master_key_2024_secure';
 
 // Helper for authenticated fetch
@@ -41,9 +42,10 @@ const handleApiError = (error: any, message: string): never => {
 // Main API service
 export const apiService = {
   // --- Agora ---
-  async getAgoraToken(channelName: string): Promise<{ token: string, appId: string }> {
+  async getAgoraToken(channelName: string, masterUrl?: string): Promise<{ token: string, appId: string }> {
     try {
-      const response = await fetchWithAuth(`${API_BASE_URL}/api/agora/token?channelName=${channelName}`);
+      const baseUrl = masterUrl || AGORA_TOKEN_URL.replace('/api/agora/token', '');
+      const response = await fetch(`${baseUrl}/api/agora/token?channelName=${channelName}`);
       if (!response.ok) {
         throw new Error(`HTTP error! Status: ${response.status}`);
       }
