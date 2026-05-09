@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import AgoraRTC, { IRemoteVideoTrack, IRemoteAudioTrack, IAgoraRTCClient } from "agora-rtc-sdk-ng";
 import { apiService } from "@/services/apiService";
+import { WaveformVisualizer } from "./WaveformVisualizer";
 
 interface AgoraVideoPlayerProps {
     channelName: string;
@@ -18,6 +19,8 @@ export const AgoraVideoPlayer: React.FC<AgoraVideoPlayerProps> = ({ channelName,
     const containerRef = useRef<HTMLDivElement>(null);
     const [status, setStatus] = useState<string>("Initializing...");
     const [volume, setVolume] = useState(100);
+    const [isPaused, setIsPaused] = useState(false);
+    const [audioLevel, setAudioLevel] = useState(0);
 
     useEffect(() => {
         if (!channelName) return;
@@ -101,23 +104,62 @@ export const AgoraVideoPlayer: React.FC<AgoraVideoPlayerProps> = ({ channelName,
 
     useEffect(() => {
         if (videoTrack && containerRef.current) {
-            videoTrack.play(containerRef.current);
+            if (isPaused) {
+                videoTrack.stop();
+            } else {
+                videoTrack.play(containerRef.current);
+            }
         }
-    }, [videoTrack]);
+    }, [videoTrack, isPaused]);
 
     useEffect(() => {
         if (audioTrack) {
-            if (isMuted) {
+            if (isMuted || isPaused) {
                 audioTrack.stop();
             } else {
                 audioTrack.play();
                 audioTrack.setVolume(volume);
             }
         }
-    }, [isMuted, audioTrack, volume]);
+    }, [isMuted, isPaused, audioTrack, volume]);
+
+    useEffect(() => {
+        if (!audioTrack || isMuted || isPaused) {
+            setAudioLevel(0);
+            return;
+        }
+
+        const interval = setInterval(() => {
+            setAudioLevel(audioTrack.getVolumeLevel() * 100);
+        }, 100);
+
+        return () => clearInterval(interval);
+    }, [audioTrack, isMuted, isPaused]);
+
+    const [stats, setStats] = useState({ latency: 0, bitrate: 0 });
+
+    useEffect(() => {
+        if (!client.current) return;
+        
+        const interval = setInterval(() => {
+            if (client.current?.connectionState === "CONNECTED") {
+                const rtcStats = client.current.getRTCStats();
+                setStats({
+                    latency: rtcStats.Duration || 0, // Mocking latency with Duration for now as Agora Web SDK 4.x stats vary
+                    bitrate: Math.round((rtcStats.RecvBitrate || 0) / 1024)
+                });
+            }
+        }, 2000);
+
+        return () => clearInterval(interval);
+    }, [client.current]);
 
     const toggleMute = () => {
         setIsMuted(!isMuted);
+    };
+
+    const togglePause = () => {
+        setIsPaused(!isPaused);
     };
 
     return (
@@ -125,17 +167,53 @@ export const AgoraVideoPlayer: React.FC<AgoraVideoPlayerProps> = ({ channelName,
             <div ref={containerRef} className="w-full h-full" />
             
             {/* Overlay */}
-            <div className="absolute top-4 left-4 flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${videoTrack ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
-                <span className="text-[10px] font-mono text-white uppercase tracking-widest bg-black/50 px-2 py-1 rounded">
-                    {videoTrack ? 'LIVE' : 'OFFLINE'}
-                </span>
-                <span className="text-[10px] font-mono text-white/70 uppercase tracking-widest bg-black/50 px-2 py-1 rounded">
-                    {agentId}
-                </span>
+            <div className="absolute top-4 inset-x-4 flex items-start justify-between pointer-events-none">
+                <div className="flex items-center gap-2 pointer-events-auto">
+                    <div className={`w-2 h-2 rounded-full ${videoTrack ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
+                    <span className="text-[10px] font-mono text-white uppercase tracking-widest bg-black/50 px-2 py-1 rounded">
+                        {videoTrack ? 'LIVE' : 'OFFLINE'}
+                    </span>
+                    <span className="text-[10px] font-mono text-white/70 uppercase tracking-widest bg-black/50 px-2 py-1 rounded">
+                        {agentId}
+                    </span>
+                </div>
+
+                <div className="flex flex-col items-end gap-1 pointer-events-auto">
+                    {client.current?.connectionState === "CONNECTED" && (
+                        <>
+                            <div className="flex items-center gap-1.5 bg-black/50 px-2 py-1 rounded">
+                                <div className="w-1 h-1 rounded-full bg-emerald-500" />
+                                <span className="text-[9px] font-mono text-white/70 uppercase">Stable Link</span>
+                            </div>
+                            <div className="text-[8px] font-mono text-white/40 uppercase bg-black/30 px-1.5 py-0.5 rounded">
+                                {stats.bitrate} KBPS
+                            </div>
+                        </>
+                    )}
+                </div>
             </div>
 
-            {!videoTrack && (
+            {!videoTrack && audioTrack && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-surface/50 backdrop-blur-sm p-8">
+                    <div className="w-full max-w-md text-center">
+                        <div className="inline-flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-full mb-6">
+                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                            <span className="text-[10px] font-mono text-emerald-500 uppercase tracking-widest">Listen Mode Active</span>
+                        </div>
+                        <WaveformVisualizer 
+                            color="#10b981" 
+                            height={80} 
+                            isLive={!isPaused} 
+                            level={audioLevel} 
+                        />
+                        <p className="mt-6 text-[9px] font-mono text-white/30 uppercase tracking-[0.3em]">
+                            Broadcasting Audio Intelligence Only
+                        </p>
+                    </div>
+                </div>
+            )}
+
+            {!videoTrack && !audioTrack && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground bg-surface/50 backdrop-blur-sm">
                     <p className="text-xs font-mono uppercase tracking-[0.2em]">{status}</p>
                 </div>
@@ -148,6 +226,18 @@ export const AgoraVideoPlayer: React.FC<AgoraVideoPlayerProps> = ({ channelName,
                 </div>
                 
                 <div className="flex items-center gap-3">
+                    <button 
+                        onClick={togglePause}
+                        className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+                        title={isPaused ? "Play" : "Pause"}
+                    >
+                        {isPaused ? (
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                        ) : (
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
+                        )}
+                    </button>
+
                     {!isMuted && (
                         <div className="flex items-center gap-2 bg-white/5 px-2 py-1 rounded-full border border-white/10 group/vol">
                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white/50"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon></svg>

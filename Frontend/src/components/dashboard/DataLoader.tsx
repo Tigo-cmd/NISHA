@@ -16,7 +16,8 @@ const mapBackendAgent = (backendAgent: any): StoreAgent => {
     battery: backendAgent.config?.battery_level || 100, // Mock fallback
     signal: backendAgent.config?.signal_strength || -50,
     zone: backendAgent.location_zone || "Unassigned",
-    hardware: "ESP32",
+    hardware: backendAgent.hardware_type || "Generic Agent",
+    hardwareType: backendAgent.hardware_type,
     firmware: backendAgent.firmware_version || "v1.0.0",
     capabilities: Object.keys(backendAgent.capabilities || {}).filter(k => backendAgent.capabilities[k]) as StoreAgent['capabilities'],
     lastSeen: backendAgent.last_heartbeat ? new Date(backendAgent.last_heartbeat).toLocaleString() : "Never",
@@ -25,6 +26,7 @@ const mapBackendAgent = (backendAgent: any): StoreAgent => {
     temp: backendAgent.config?.temperature_c || 0,
     audioLevel: backendAgent.config?.current_db || 0,
     motionDetected: backendAgent.config?.motion_detected || false,
+    streamUrl: backendAgent.stream_url,
     position: (backendAgent.gps_lat && backendAgent.gps_lng) ? {
       lat: backendAgent.gps_lat,
       lng: backendAgent.gps_lng
@@ -63,11 +65,12 @@ export function DataLoader() {
 
   const fetchData = async () => {
     try {
-      const [agentsData, mastersData, systemStatus, audioEvents] = await Promise.all([
+      const [agentsData, mastersData, systemStatus, audioEvents, videoEvents] = await Promise.all([
         apiService.getAgents(),
         apiService.getMasters(),
         apiService.getSystemStatus().catch(() => null),
-        apiService.getAudioEvents(20).catch(() => [])
+        apiService.getAudioEvents(20).catch(() => []),
+        apiService.getVideoEvents(20).catch(() => [])
       ]);
 
       if (agentsData && agentsData.length > 0) {
@@ -98,37 +101,78 @@ export function DataLoader() {
         setSystemStatus(systemStatus);
       }
 
-      if (audioEvents && audioEvents.length > 0) {
-        // [DEPRECATED] Mapping raw audio events to primary Alerts. 
-        // Reserved for future AI-driven analysis.
-        /*
-        const alerts = audioEvents.map((evt: any) => ({
-          id: evt.event_id,
-          type: "AUDIO" as const,
-          severity: (evt.priority === "1" ? "critical" : evt.priority === "2" ? "high" : "medium") as "critical" | "high" | "medium",
-          description: `Audio Event: ${evt.class_name.toUpperCase()}`,
-          timestamp: new Date(evt.timestamp).toLocaleString(),
-          agentId: evt.agent_id,
-          acknowledged: evt.confirmed || false
-        }));
-        setAlerts(alerts);
-        */
-        setAlerts([]); // Clear active alerts to make room for AI
+      // Process Alerts (Audio + Video)
+      const currentAlerts = useStore.getState().alerts;
+      const currentSecurityEvents = useStore.getState().securityEvents;
 
-        // [DEPRECATED] Mapping raw audio events to SecurityEvents feed.
-        /*
-        const securityEvents = audioEvents.map((evt: any) => ({
-          id: evt.event_id,
-          type: "Audio Trigger" as const,
-          severity: (evt.priority === "1" ? "critical" : evt.priority === "2" ? "high" : "medium") as "critical" | "high" | "medium",
-          description: `Audio Event: ${evt.class_name.toUpperCase()} (Confidence: ${(evt.confidence * 100).toFixed(1)}%)`,
-          timestamp: new Date(evt.timestamp).toLocaleString(),
-          zone: evt.location_zone || "Unknown",
-          agentId: evt.agent_id
-        }));
-        setSecurityEvents(securityEvents);
-        */
+      const newAlerts: any[] = [];
+      const newSecurityEvents: any[] = [];
+
+      // Map Audio Events
+      if (audioEvents && audioEvents.length > 0) {
+        audioEvents.forEach((evt: any) => {
+          if (!currentAlerts.some(a => a.id === evt.event_id)) {
+            newAlerts.push({
+              id: evt.event_id,
+              type: "AUDIO",
+              severity: (evt.priority === "1" ? "critical" : evt.priority === "2" ? "high" : "medium"),
+              description: `Audio Event: ${evt.class_name.toUpperCase()}`,
+              timestamp: new Date(evt.timestamp).toLocaleString(),
+              agentId: evt.agent_id,
+              acknowledged: evt.confirmed || false
+            });
+          }
+
+          if (!currentSecurityEvents.some(e => e.id === evt.event_id)) {
+            newSecurityEvents.push({
+              id: evt.event_id,
+              type: "Audio Trigger",
+              severity: (evt.priority === "1" ? "critical" : evt.priority === "2" ? "high" : "medium"),
+              description: `Audio Event: ${evt.class_name.toUpperCase()} (Confidence: ${(evt.confidence * 100).toFixed(1)}%)`,
+              timestamp: new Date(evt.timestamp).toLocaleString(),
+              zone: evt.location_zone || "Unknown",
+              agentId: evt.agent_id
+            });
+          }
+        });
       }
+
+      // Map Video Events
+      if (videoEvents && videoEvents.length > 0) {
+        videoEvents.forEach((evt: any) => {
+          if (!currentAlerts.some(a => a.id === evt.event_id)) {
+            newAlerts.push({
+              id: evt.event_id,
+              type: "VIDEO",
+              severity: (evt.priority === "1" ? "critical" : evt.priority === "2" ? "high" : "medium"),
+              description: `Video Event: ${evt.behavior?.toUpperCase() || "MOTION"}`,
+              timestamp: new Date(evt.timestamp).toLocaleString(),
+              agentId: evt.agent_id,
+              acknowledged: evt.confirmed || false
+            });
+          }
+
+          if (!currentSecurityEvents.some(e => e.id === evt.event_id)) {
+            newSecurityEvents.push({
+              id: evt.event_id,
+              type: "Video Analytics",
+              severity: (evt.priority === "1" ? "critical" : evt.priority === "2" ? "high" : "medium"),
+              description: `Behavior Detected: ${evt.behavior?.toUpperCase() || "MOTION"} (Confidence: ${(evt.confidence * 100).toFixed(1)}%)`,
+              timestamp: new Date(evt.timestamp).toLocaleString(),
+              zone: evt.location_zone || "Unknown",
+              agentId: evt.agent_id
+            });
+          }
+        });
+      }
+
+      if (newAlerts.length > 0) {
+        setAlerts([...newAlerts, ...currentAlerts].slice(0, 50));
+      }
+      if (newSecurityEvents.length > 0) {
+        setSecurityEvents([...newSecurityEvents, ...currentSecurityEvents].slice(0, 50));
+      }
+
     } catch (error) {
       console.error("DataLoader error fetching live data:", error);
     }

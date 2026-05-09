@@ -7,6 +7,7 @@ export interface Agent {
   signal: number;
   zone: string;
   hardware: string;
+  hardwareType?: string;
   firmware: string;
   capabilities: ("audio" | "video" | "motion" | "gps")[];
   position?: { lat: number; lng: number };
@@ -16,6 +17,7 @@ export interface Agent {
   temp: number;
   audioLevel?: number;
   motionDetected?: boolean;
+  streamUrl?: string;
 }
 
 export interface Master {

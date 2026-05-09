@@ -146,6 +146,8 @@ function OverviewTab({ agent }: { agent: Agent }) {
 }
 
 function AudioTab({ agent }: { agent: Agent }) {
+    const { securityEvents } = useStore();
+    const agentEvents = securityEvents.filter(e => e.agentId === agent.id);
     const [latestAudio, setLatestAudio] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
 
@@ -222,8 +224,22 @@ function AudioTab({ agent }: { agent: Agent }) {
 
             <div>
                 <span className="text-xs font-mono text-muted-foreground uppercase">AI Signal Analysis</span>
-                <div className="mt-2 bg-foreground/5 rounded-lg h-16 flex items-center justify-center border border-dashed border-foreground/10">
-                    <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">Awaiting AI Telemetry Relay...</span>
+                <div className="mt-2 bg-foreground/5 rounded-lg p-3 border border-foreground/5 min-h-[64px] flex items-center justify-center">
+                    {agentEvents.filter(e => e.type === "Audio Trigger").length > 0 ? (
+                        <div className="w-full">
+                            <div className="flex justify-between items-center mb-2">
+                                <span className="text-[10px] font-mono text-emerald-500 uppercase">Signature Match</span>
+                                <span className="text-[10px] font-mono text-muted-foreground">{agentEvents.filter(e => e.type === "Audio Trigger")[0].timestamp.split(', ')[1]}</span>
+                            </div>
+                            <p className="text-xs text-foreground italic">
+                                {agentEvents.filter(e => e.type === "Audio Trigger")[0].description}
+                            </p>
+                        </div>
+                    ) : (
+                        <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest text-center">
+                            Awaiting Acoustic Signature...
+                        </span>
+                    )}
                 </div>
             </div>
         </div>
@@ -290,11 +306,31 @@ function VideoTab({ agent, masterUrl }: { agent: Agent, masterUrl?: string }) {
         <div className="space-y-4">
             <div className="aspect-video bg-black rounded-lg overflow-hidden flex items-center justify-center border border-foreground/5 relative">
                 {isStreaming ? (
-                    <AgoraVideoPlayer 
-                        channelName={`nisha_stream_${agent.id}`} 
-                        agentId={agent.id} 
-                        masterUrl={masterUrl}
-                    />
+                    agent.streamUrl ? (
+                        <div className="relative w-full h-full group/stream">
+                             <img 
+                                src={agent.streamUrl} 
+                                alt="Live Feed" 
+                                className="w-full h-full object-contain"
+                                onError={(e) => {
+                                    console.error("MJPEG Stream Error");
+                                    (e.target as HTMLImageElement).src = 'https://via.placeholder.com/640x360?text=Stream+Offline';
+                                }}
+                            />
+                            <div className="absolute top-4 left-4 flex items-center gap-2">
+                                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                                <span className="text-[10px] font-mono text-white uppercase tracking-widest bg-black/50 px-2 py-1 rounded">
+                                    LIVE · MJPEG
+                                </span>
+                            </div>
+                        </div>
+                    ) : (
+                        <AgoraVideoPlayer 
+                            channelName={`nisha_stream_${agent.id}`} 
+                            agentId={agent.id} 
+                            masterUrl={masterUrl}
+                        />
+                    )
                 ) : (
                     <div className="text-center text-muted-foreground">
                         <Video size={32} className="mx-auto mb-2 opacity-30" />
@@ -383,6 +419,11 @@ function LocationTab({ agent }: { agent: Agent }) {
 }
 
 function AnalyticsTab({ agent }: { agent: Agent }) {
+    const { securityEvents, alerts } = useStore();
+    const agentEvents = securityEvents.filter(e => e.agentId === agent.id);
+    const agentAlerts = alerts.filter(a => a.agentId === agent.id);
+    const recentActivity = agentEvents.length > 0 ? "Elevated" : "Normal";
+
     return (
         <div className="space-y-6">
             <div className="grid grid-cols-2 gap-3">
@@ -398,28 +439,42 @@ function AnalyticsTab({ agent }: { agent: Agent }) {
                 <div className="bg-surface/50 p-3 rounded-lg border border-foreground/5">
                     <div className="flex items-center gap-2 text-muted-foreground mb-1">
                         <Eye size={12} />
-                        <span className="text-[10px] font-mono uppercase">Detections (24h)</span>
+                        <span className="text-[10px] font-mono uppercase">Detections (Total)</span>
                     </div>
-                    <div className="text-sm font-display text-muted-foreground italic">PENDING</div>
+                    <div className="text-sm font-display text-foreground">{agentEvents.length}</div>
                 </div>
             </div>
 
-            <div className="bg-surface/50 p-4 rounded-lg border border-foreground/5 border-dashed">
+            <div className="bg-surface/50 p-4 rounded-lg border border-foreground/5">
                 <div className="flex items-center gap-2 text-muted-foreground mb-3">
                     <Activity size={14} />
                     <span className="text-xs font-mono uppercase">AI Pattern Recognition</span>
                 </div>
                 <div className="space-y-2">
                     <div className="h-1.5 w-full bg-foreground/5 rounded-full overflow-hidden">
-                        <div className="h-full w-1/3 bg-foreground/20 animate-pulse" />
+                        <div 
+                            className={cn("h-full transition-all", agentEvents.length > 0 ? "bg-amber-500 w-2/3" : "bg-emerald-500 w-1/3")} 
+                        />
                     </div>
                     <div className="text-[9px] font-mono text-muted-foreground uppercase text-center">
-                        Synthesizing activity patterns...
+                        {agentEvents.length > 0 ? "Anomaly Pattern Detected" : "Baseline Activity Normal"}
                     </div>
                 </div>
             </div>
 
-            {/* AI event history placeholder */}
+            {agentEvents.length > 0 && (
+                <div className="space-y-2">
+                    <span className="text-[10px] font-mono text-muted-foreground uppercase">Recent AI Events</span>
+                    <div className="space-y-2">
+                        {agentEvents.slice(0, 3).map(evt => (
+                            <div key={evt.id} className="text-[10px] bg-foreground/5 p-2 rounded border border-foreground/5 flex justify-between items-center">
+                                <span className="text-foreground">{evt.type}</span>
+                                <span className="text-muted-foreground font-mono">{evt.timestamp.split(', ')[1]}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

@@ -10,8 +10,8 @@
 #include "esp_http_server.h"
 
 // --- CONFIGURATION ---
-const char* ssid = "NISHA_CES";
-const char* password = "CES@2470";
+const char* ssid = "CLICKNETWORKS";
+const char* password = "hotguy112345";
 
 // Master Node Details (mDNS)
 const char* master_ws_host = "nisha-master.local";
@@ -19,7 +19,7 @@ const int master_ws_port = 8082;
 const char* backend_url = "https://api.buildwave.pro/api/v1/agents";
 const char* api_key = "nisha_master_key_2024_secure";
 const char* master_id = "MASTER_001";
-const char* agent_name = "ESP32-SENTINEL-01";
+const char* agent_name = "ACAM-SENTINEL-01";
 
 #define PART_BOUNDARY "123456789000000000000987654321"
 static const char* _STREAM_CONTENT_TYPE = "multipart/x-mixed-replace;boundary=" PART_BOUNDARY;

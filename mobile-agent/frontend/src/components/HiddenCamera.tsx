@@ -91,11 +91,12 @@ export const HiddenCamera = forwardRef<HiddenCameraHandle, HiddenCameraProps>(
                 orientationMode: 0,
             });
 
-            // Explicitly enable AND unmute both streams
-            engine.current.enableLocalVideo(true);
-            engine.current.enableLocalAudio(true);
-            engine.current.muteLocalVideoStream(false);
-            engine.current.muteLocalAudioStream(false);
+            // Respect current sensor state during initialization
+            const sensors = useAgentStore.getState().sensors;
+            engine.current.enableLocalVideo(sensors.video);
+            engine.current.enableLocalAudio(sensors.audio);
+            engine.current.muteLocalVideoStream(!sensors.video);
+            engine.current.muteLocalAudioStream(!sensors.audio);
             
             // Set role as Broadcaster
             engine.current.setClientRole(ClientRoleType.ClientRoleBroadcaster);
@@ -134,12 +135,15 @@ export const HiddenCamera = forwardRef<HiddenCameraHandle, HiddenCameraProps>(
         } catch (e) {
             console.error('[Agora] Init failed:', e);
         }
-    }, [currentFacing]);
+    }, []); // Removed currentFacing to avoid re-init on flip
 
     useEffect(() => {
         initAgora();
         return () => {
             if (engine.current) {
+                console.log('[Agora] Component unmounting, forcing hardware shutdown...');
+                engine.current.enableLocalVideo(false);
+                engine.current.enableLocalAudio(false);
                 engine.current.leaveChannel();
                 engine.current.release();
             }
@@ -147,11 +151,12 @@ export const HiddenCamera = forwardRef<HiddenCameraHandle, HiddenCameraProps>(
     }, [initAgora]);
 
     useEffect(() => {
-        // Toggle camera facing
-        if (engine.current) {
+        // Toggle camera facing without re-initializing the whole engine
+        if (engine.current && isJoined) {
+            console.log('[Agora] Switching camera to:', currentFacing);
             engine.current.switchCamera();
         }
-    }, [currentFacing]);
+    }, [currentFacing, isJoined]);
 
     useEffect(() => {
         const sensors = useAgentStore.getState().sensors;
