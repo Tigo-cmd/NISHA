@@ -153,6 +153,7 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
       isWSConnected = false;
       break;
     case WStype_CONNECTED:
+    {
       Serial.printf("[WS] Connected to Master ✅ at %s\n", payload);
       isWSConnected = true;
       
@@ -164,6 +165,7 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
       String handshake = "{\"type\":\"HANDSHAKE\",\"agent_id\":\"" + mac + "\",\"mode\":\"HARDWARE\",\"stream_url\":\"http://" + ip + ":81/stream\"}";
       webSocket.sendTXT(handshake);
       break;
+    }
     case WStype_TEXT:
       Serial.printf("[WS] Message from Master: %s\n", payload);
       break;
