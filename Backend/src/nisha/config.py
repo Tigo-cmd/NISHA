@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     ws_ping_interval: int = 30
     ws_ping_timeout: int = 10
 
+    # Agora
+    agora_app_id: str = "8aab67dc71304ae595f064ea51f12082"
+    agora_app_certificate: str = "4130348368c94fd2b8a008676187b394"
+
     @property
     def is_development(self) -> bool:
         return self.app_env == "development"
