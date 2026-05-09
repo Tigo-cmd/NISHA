@@ -5,7 +5,6 @@
 import { AppState, AppStateStatus } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import { NISHAFrame, StreamType, Priority } from '../utils/protocol';
-import { useAgentStore } from '../store/useAgentStore';
 import { locationManager } from './LocationManager';
 import { masterClient } from '../api/master_client';
 
@@ -184,7 +183,6 @@ class StreamManager {
 
     this._isStreaming = false;
     this.emit({ connectionState: 'disconnected', fps: 0, errorMessage: null, isRecording: false });
-    useAgentStore.getState().setStatus('ORPHAN');
   }
 
   private audioBuffer: number[] = [];
@@ -272,7 +270,6 @@ class StreamManager {
     }
 
     this.emit({ connectionState: 'connecting', errorMessage: null });
-    useAgentStore.getState().setStatus('SEARCHING');
 
     console.log('[StreamManager] Connecting to Master at:', this.wsUrl);
 
@@ -302,7 +299,6 @@ class StreamManager {
           this.clipIndex = 0;
           this.bytesAccum = 0;
           this.emit({ connectionState: 'connected', clipsSent: 0, bytesSent: 0 });
-          useAgentStore.getState().setStatus('CONNECTED');
 
           // Start location loop
           this.startLocationLoop();
@@ -311,13 +307,11 @@ class StreamManager {
         } else if (state === 'connecting') {
           this.isConnecting = true;
           this.emit({ connectionState: 'connecting', errorMessage: null });
-          useAgentStore.getState().setStatus('SEARCHING');
         } else if (state === 'disconnected') {
           this.isConnecting = false;
           this._isStreaming = false;
           this.loopActive = false;
           this.emit({ connectionState: 'disconnected', isRecording: false });
-          useAgentStore.getState().setStatus('ORPHAN');
           // Trust masterClient to reconnect automatically
         } else if (state === 'error') {
           this.isConnecting = false;
@@ -348,7 +342,6 @@ class StreamManager {
     }
 
     this.emit({ connectionState: 'connecting', errorMessage: null });
-    useAgentStore.getState().setStatus('SEARCHING');
 
     console.log('[StreamManager] Attempting connection to:', this.wsUrl);
     const ws = new WebSocket(this.wsUrl);
@@ -364,7 +357,6 @@ class StreamManager {
       this.clipIndex = 0;
       this.bytesAccum = 0;
       this.emit({ connectionState: 'connected', clipsSent: 0, bytesSent: 0 });
-      useAgentStore.getState().setStatus('CONNECTED');
 
       this.startLocationLoop();
       this.startFrameLoop();
@@ -382,7 +374,6 @@ class StreamManager {
       this._isStreaming = false;
       this.loopActive = false;
       this.emit({ connectionState: 'disconnected', isRecording: false });
-      useAgentStore.getState().setStatus('ORPHAN');
       if (this._intentToStream) this.scheduleReconnect();
     };
 
@@ -398,7 +389,7 @@ class StreamManager {
 
   private startLocationLoop() {
     this.locationInterval = setInterval(() => {
-      if (masterClient.isConnected() && useAgentStore.getState().sensors.location) {
+      if (masterClient.isConnected()) {
         const gps = locationManager.coords;
         if (gps) {
           try {

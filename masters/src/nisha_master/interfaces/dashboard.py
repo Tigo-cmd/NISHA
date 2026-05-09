@@ -9,11 +9,40 @@ from typing import Dict, List, Any
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request, Body
 import httpx
 import logging
+from agora_token_builder import RtcTokenBuilder
 
 from nisha_master.config import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+@router.get("/api/agora/token/{channel_name}")
+async def get_agora_token(channel_name: str, uid: int = 0):
+    """Generates a secure Agora RTC token for a specific channel."""
+    # 3600 seconds = 1 hour
+    expiration_time_in_seconds = 3600
+    current_timestamp = int(time.time())
+    privilege_expired_ts = current_timestamp + expiration_time_in_seconds
+
+    if settings.agora_app_id == "YOUR_APP_ID":
+        logger.error("Agora App ID not configured")
+        return {"error": "Agora not configured"}
+
+    token = RtcTokenBuilder.buildTokenWithUid(
+        settings.agora_app_id,
+        settings.agora_app_certificate,
+        channel_name,
+        uid,
+        2,
+        privilege_expired_ts
+    )
+    
+    return {
+        "token": token,
+        "appId": settings.agora_app_id,
+        "channel": channel_name,
+        "uid": uid
+    }
 
 class DashboardMetrics:
     def __init__(self):

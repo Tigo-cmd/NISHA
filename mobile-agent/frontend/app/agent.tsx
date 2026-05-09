@@ -79,10 +79,21 @@ export default function AgentDashboard() {
     // Wire up camera to stream manager
     streamManager.setCaptureSource(cameraRef.current);
     
-    // Subscribe to stats
-    const unsub = streamManager.subscribe(setVStats);
+    // Subscribe to stats and sync status
+    const unsub = streamManager.subscribe((stats) => {
+      setVStats(stats);
+      
+      // Sync store status with connection state
+      if (stats.connectionState === 'connected') {
+        useAgentStore.getState().setStatus('CONNECTED');
+      } else if (stats.connectionState === 'connecting') {
+        useAgentStore.getState().setStatus('SEARCHING');
+      } else if (stats.connectionState === 'disconnected' && status !== 'ORPHAN') {
+        useAgentStore.getState().setStatus('ORPHAN');
+      }
+    });
     return unsub;
-  }, [cameraRef.current]);
+  }, [cameraRef.current, status]);
 
   const onRefresh = () => {
     refreshing.current = true;
