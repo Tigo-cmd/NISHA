@@ -1,66 +1,40 @@
 /*
  * NISHA Sentinel - ESP32-CAM Fixed Node Firmware
  * This sketch sets up a stable MJPEG webserver for NISHA Master ingestion.
+ * Connection logic synchronized with NISHA Audio Node (Cloudflare WSS).
  */
 
 #include "esp_camera.h"
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <WebSocketsClient.h>
 #include "esp_http_server.h"
+#include <time.h>
 
 // --- CONFIGURATION ---
 const char* ssid = "CLICKNETWORKS";
 const char* password = "hotguy112345";
 
-// Master Node Details (mDNS)
-const char* master_ws_host = "nisha-master.local";
-const int master_ws_port = 8082;
-const char* backend_url = "https://api.buildwave.pro/api/v1/agents";
+// Cloudflare WebSocket endpoint (Matches Audio Node)
+const char* ws_host = "m01ws.buildwave.pro"; // No "wss://"
+const int ws_port = 443;
+const char* ws_path = "/";
+
+const char* backend_url = "http://api.buildwave.pro/api/v1/agents";
 const char* api_key = "nisha_master_key_2024_secure";
 const char* master_id = "MASTER_001";
 const char* agent_name = "ACAM-SENTINEL-01";
 
-#define PART_BOUNDARY "123456789000000000000987654321"
-static const char* _STREAM_CONTENT_TYPE = "multipart/x-mixed-replace;boundary=" PART_BOUNDARY;
-static const char* _STREAM_BOUNDARY = "\r\n--" PART_BOUNDARY "\r\n";
-static const char* _STREAM_PART = "Content-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n";
+// --- STATE ---
+WebSocketsClient webSocket;
+bool isWSConnected = false;
+unsigned long lastHeartbeat = 0;
+const unsigned long heartbeatInterval = 60000; // Backend REST
+unsigned long lastWSHeartbeat = 0;
+const unsigned long wsHeartbeatInterval = 20000; // Master WS
 
 httpd_handle_t stream_httpd = NULL;
-
-// Function to register this agent with the NISHA Backend
-void registerWithBackend() {
-  if (WiFi.status() == WL_CONNECTED) {
-    HTTPClient http;
-    http.begin(backend_url);
-    http.addHeader("Content-Type", "application/json");
-    http.addHeader("Authorization", "Bearer " + String(api_key));
-
-    String ip = WiFi.localIP().toString();
-    String mac = WiFi.macAddress();
-    mac.replace(":", ""); // Standardize MAC ID
-
-    String payload = "{";
-    payload += "\"agent_id\": \"" + mac + "\",";
-    payload += "\"master_id\": \"" + String(master_id) + "\",";
-    payload += "\"hardware_type\": \"ESP32-CAM\",";
-    payload += "\"firmware_version\": \"1.0.0\",";
-    payload += "\"stream_url\": \"http://" + ip + ":81/stream\",";
-    payload += "\"capabilities\": {\"video\": true, \"audio\": false, \"fixed\": true}";
-    payload += "}";
-
-    int httpResponseCode = http.POST(payload);
-    
-    if (httpResponseCode > 0) {
-      Serial.print("Registration Successful: ");
-      Serial.println(httpResponseCode);
-    } else {
-      Serial.print("Registration Failed: ");
-      Serial.println(httpResponseCode);
-    }
-    http.end();
-  }
-}
 
 // Camera Pin Mapping (AI-Thinker)
 #define PWDN_GPIO_NUM     32
@@ -80,7 +54,72 @@ void registerWithBackend() {
 #define HREF_GPIO_NUM     23
 #define PCLK_GPIO_NUM     22
 
-// Stream Handler
+// ---------------- BACKEND ----------------
+void registerWithBackend() {
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    http.begin(backend_url);
+    http.addHeader("Content-Type", "application/json");
+    http.addHeader("Authorization", "Bearer " + String(api_key));
+
+    String ip = WiFi.localIP().toString();
+    String mac = WiFi.macAddress();
+    mac.replace(":", "");
+
+    String payload = "{";
+    payload += "\"agent_id\": \"" + mac + "\",";
+    payload += "\"master_id\": \"" + String(master_id) + "\",";
+    payload += "\"hardware_type\": \"ESP32-CAM\",";
+    payload += "\"firmware_version\": \"1.1.0\",";
+    payload += "\"stream_url\": \"http://" + ip + ":81/stream\",";
+    payload += "\"capabilities\": {\"video\": true, \"audio\": false, \"fixed\": true}";
+    payload += "}";
+
+    int code = http.POST(payload);
+    Serial.printf("[REST] Registration: %d\n", code);
+    http.end();
+  }
+}
+
+// ---------------- WEBSOCKET EVENT ----------------
+void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
+  switch(type) {
+    case WStype_DISCONNECTED:
+      Serial.println("[WS] Disconnected ❌");
+      isWSConnected = false;
+      break;
+
+    case WStype_CONNECTED:
+    {
+      Serial.printf("[WS] Connected to Cloudflare ✅: %s\n", payload);
+      isWSConnected = true;
+      
+      String mac = WiFi.macAddress();
+      mac.replace(":", "");
+      String ip = WiFi.localIP().toString();
+      
+      // Handshake using mode HARDWARE for MJPEG routing
+      String handshake = "{\"type\":\"HANDSHAKE\",\"agent_id\":\"" + mac + "\",\"mode\":\"HARDWARE\",\"stream_url\":\"http://" + ip + ":81/stream\"}";
+      webSocket.sendTXT(handshake);
+      break;
+    }
+
+    case WStype_TEXT:
+      Serial.printf("[WS] MSG: %s\n", payload);
+      break;
+      
+    case WStype_ERROR:
+      Serial.printf("[WS] ERROR: %s\n", payload ? (char*)payload : "unknown");
+      break;
+  }
+}
+
+// ---------------- MJPEG SERVER ----------------
+#define PART_BOUNDARY "123456789000000000000987654321"
+static const char* _STREAM_CONTENT_TYPE = "multipart/x-mixed-replace;boundary=" PART_BOUNDARY;
+static const char* _STREAM_BOUNDARY = "\r\n--" PART_BOUNDARY "\r\n";
+static const char* _STREAM_PART = "Content-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n";
+
 static esp_err_t stream_handler(httpd_req_t *req){
   camera_fb_t * fb = NULL;
   esp_err_t res = ESP_OK;
@@ -89,7 +128,7 @@ static esp_err_t stream_handler(httpd_req_t *req){
   char * part_buf[64];
 
   res = httpd_resp_set_type(req, _STREAM_CONTENT_TYPE);
-  if(res != ESP_OK){ return res; }
+  if(res != ESP_OK) return res;
 
   while(true){
     fb = esp_camera_fb_get();
@@ -118,7 +157,7 @@ static esp_err_t stream_handler(httpd_req_t *req){
     } else if(res == ESP_OK){
       break;
     }
-    if(res != ESP_OK){ break; }
+    if(res != ESP_OK) break;
   }
   return res;
 }
@@ -139,47 +178,15 @@ void startCameraServer(){
   }
 }
 
-WebSocketsClient webSocket;
-bool isWSConnected = false;
-unsigned long lastHeartbeat = 0;
-const unsigned long heartbeatInterval = 60000; // 60 seconds
-unsigned long lastWSHeartbeat = 0;
-const unsigned long wsHeartbeatInterval = 10000; // 10 seconds for Master link
-
-void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
-  switch(type) {
-    case WStype_DISCONNECTED:
-      Serial.println("[WS] Disconnected from Master ❌");
-      isWSConnected = false;
-      break;
-    case WStype_CONNECTED:
-    {
-      Serial.printf("[WS] Connected to Master ✅ at %s\n", payload);
-      isWSConnected = true;
-      
-      // Handshake with ID and Stream URL
-      String mac = WiFi.macAddress();
-      mac.replace(":", "");
-      String ip = WiFi.localIP().toString();
-      
-      String handshake = "{\"type\":\"HANDSHAKE\",\"agent_id\":\"" + mac + "\",\"mode\":\"HARDWARE\",\"stream_url\":\"http://" + ip + ":81/stream\"}";
-      webSocket.sendTXT(handshake);
-      break;
-    }
-    case WStype_TEXT:
-      Serial.printf("[WS] Message from Master: %s\n", payload);
-      break;
-  }
-}
-
+// ---------------- SETUP ----------------
 void setup() {
   Serial.begin(115200);
   
-  // Print ID (MAC)
   String mac = WiFi.macAddress();
   mac.replace(":", "");
   Serial.printf("\n=== NISHA Cam Node: %s ===\n", mac.c_str());
 
+  // Camera Config
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
   config.ledc_timer = LEDC_TIMER_0;
@@ -215,7 +222,7 @@ void setup() {
   // Camera Init
   esp_err_t err = esp_camera_init(&config);
   if (err != ESP_OK) {
-    Serial.printf("Camera init failed with error 0x%x", err);
+    Serial.printf("Camera init failed: 0x%x\n", err);
     return;
   }
 
@@ -226,32 +233,49 @@ void setup() {
     Serial.print(".");
   }
   Serial.println("\nWiFi connected");
+
+  // Sync Time (Required for WSS)
+  configTime(0, 0, "pool.ntp.org");
+  time_t now = time(nullptr);
+  while (now < 100000) {
+    delay(500);
+    now = time(nullptr);
+  }
+  Serial.println("Time synced");
   
-  // Initialize WebSocket connection to Master
-  webSocket.begin(master_ws_host, master_ws_port, "/");
+  // --- WebSocket Connection (Matches Audio Node Production Config) ---
+  Serial.printf("[WS] Connecting to wss://%s:%d%s\n", ws_host, ws_port, ws_path);
+  webSocket.beginSSL(ws_host, ws_port, ws_path);
+  webSocket.setExtraHeaders("Origin: https://m01ws.buildwave.pro");
   webSocket.onEvent(webSocketEvent);
-  webSocket.setReconnectInterval(5000);
+  webSocket.setReconnectInterval(3000);
+  
+  // Standard stability pings
+  webSocket.enableHeartbeat(15000, 3000, 2);
 
   registerWithBackend();
   startCameraServer();
   lastHeartbeat = millis();
+  lastWSHeartbeat = millis();
 }
 
+// ---------------- LOOP ----------------
 void loop() {
   webSocket.loop();
   
-  // Periodic Heartbeat to Backend (Direct)
+  // Periodic Heartbeat to Backend (Direct REST)
   if (millis() - lastHeartbeat > heartbeatInterval) {
     registerWithBackend();
     lastHeartbeat = millis();
   }
 
-  // Periodic Heartbeat to Master (via WS)
+  // Periodic JSON Heartbeat to Master (Application Level)
   if (isWSConnected && (millis() - lastWSHeartbeat > wsHeartbeatInterval)) {
     String mac = WiFi.macAddress();
     mac.replace(":", "");
     webSocket.sendTXT("{\"type\":\"HEARTBEAT\",\"agent_id\":\"" + mac + "\"}");
     lastWSHeartbeat = millis();
   }
+  
   delay(1);
 }

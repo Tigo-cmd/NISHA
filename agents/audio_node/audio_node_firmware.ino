@@ -7,8 +7,8 @@
 #include "driver/i2s.h"
 
 // ---------------- CONFIG ----------------
-const char* ssid = "NISHA_CES";
-const char* password = "CES@2470";
+const char* ssid = "CLICKNETWORKS";
+const char* password = "hotguy112345";
 
 const char* backend_url = "http://api.buildwave.pro/api/v1/agents";
 
