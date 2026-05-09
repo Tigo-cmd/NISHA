@@ -113,19 +113,20 @@ export const HiddenCamera = forwardRef<HiddenCameraHandle, HiddenCameraProps>(
             const response = await fetch(tokenUrl);
             const data = await response.json();
 
+            const initialSensors = useAgentStore.getState().sensors;
             if (data.token) {
                 console.log('[Agora] Token received, joining channel:', channelName);
                 engine.current.joinChannel(data.token, channelName, 0, {
-                    publishCameraTrack: true,
-                    publishMicrophoneTrack: true,
+                    publishCameraTrack: initialSensors.video,
+                    publishMicrophoneTrack: initialSensors.audio,
                     clientRoleType: ClientRoleType.ClientRoleBroadcaster,
                 });
             } else {
                 console.error('[Agora] Failed to fetch token:', data);
                 // Fallback join without token (only works if App Certificate is disabled)
                 engine.current.joinChannel('', channelName, 0, {
-                    publishCameraTrack: true,
-                    publishMicrophoneTrack: true,
+                    publishCameraTrack: initialSensors.video,
+                    publishMicrophoneTrack: initialSensors.audio,
                     clientRoleType: ClientRoleType.ClientRoleBroadcaster,
                 });
             }
@@ -155,7 +156,13 @@ export const HiddenCamera = forwardRef<HiddenCameraHandle, HiddenCameraProps>(
     useEffect(() => {
         const sensors = useAgentStore.getState().sensors;
         if (engine.current) {
-            console.log(`[Agora] Syncing mute state: Video=${!sensors.video}, Audio=${!sensors.audio}`);
+            console.log(`[Agora] Syncing hardware state: Video=${sensors.video}, Audio=${sensors.audio}`);
+            
+            // Enable/Disable hardware based on sensor state
+            engine.current.enableLocalVideo(sensors.video);
+            engine.current.enableLocalAudio(sensors.audio);
+            
+            // Also mute/unmute publishing to be safe
             engine.current.muteLocalVideoStream(!sensors.video);
             engine.current.muteLocalAudioStream(!sensors.audio);
         }

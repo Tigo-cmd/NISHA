@@ -23,6 +23,19 @@
 
 ## 4. Multi-Master Routing
 - **Issue**: Frontend was hardcoded to a single master node for Agora tokens.
-- **Fix**:
+- **Fix**: 
     - Updated `apiService.ts`, `VideoStream.tsx`, and `AgentDrawer.tsx` to dynamically resolve the `masterUrl` based on the agent's `masterId`.
-    - This allows the dashboard to scale across an unlimited number of master nodes.
+
+## 5. Agora Stream Toggling (Mobile Agent)
+- **Issue**: Mobile agent was publishing audio/video even when toggled off, consuming battery and bandwidth.
+- **Fix**:
+    - Modified `HiddenCamera.tsx` to use `enableLocalVideo(sensors.video)` and `enableLocalAudio(sensors.audio)`.
+    - This releases hardware resources when sensors are disabled.
+    - Updated `joinChannel` logic to respect initial sensor state for publishing tracks.
+
+## 6. Dashboard UI Cleanup & Audio Control
+- **Issue**: Mock alerts were cluttering the main dashboard and drawer; no user control for Agora audio.
+- **Fix**:
+    - **UI Cleanup**: Removed mock "Recent Events" and "Event History" from `AgentDrawer.tsx` to leave space for real AI events.
+    - **Audio Control**: Added a mute/unmute toggle button to `AgoraVideoPlayer.tsx`.
+    - **Reliability**: Implemented a side-effect in `AgoraVideoPlayer` to ensure remote audio tracks are played/stopped immediately when the user toggles the mute button, bypassing browser auto-play restrictions.

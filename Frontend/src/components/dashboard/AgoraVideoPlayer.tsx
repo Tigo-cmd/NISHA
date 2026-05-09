@@ -14,8 +14,10 @@ export const AgoraVideoPlayer: React.FC<AgoraVideoPlayerProps> = ({ channelName,
     const client = useRef<IAgoraRTCClient | null>(null);
     const [videoTrack, setVideoTrack] = useState<IRemoteVideoTrack | null>(null);
     const [audioTrack, setAudioTrack] = useState<IRemoteAudioTrack | null>(null);
+    const [isMuted, setIsMuted] = useState(true);
     const containerRef = useRef<HTMLDivElement>(null);
     const [status, setStatus] = useState<string>("Initializing...");
+    const [volume, setVolume] = useState(100);
 
     useEffect(() => {
         if (!channelName) return;
@@ -42,8 +44,9 @@ export const AgoraVideoPlayer: React.FC<AgoraVideoPlayerProps> = ({ channelName,
                             if (!isMounted) return;
                             if (mediaType === "video") setVideoTrack(user.videoTrack || null);
                             if (mediaType === "audio") {
-                                user.audioTrack?.play();
-                                setAudioTrack(user.audioTrack || null);
+                                const track = user.audioTrack || null;
+                                if (track && !isMuted) track.play();
+                                setAudioTrack(track);
                             }
                         } catch (e) {}
                     }
@@ -62,8 +65,9 @@ export const AgoraVideoPlayer: React.FC<AgoraVideoPlayerProps> = ({ channelName,
                                 if (!isMounted) return;
                                 if (user.hasVideo) setVideoTrack(user.videoTrack || null);
                                 if (user.hasAudio) {
-                                    user.audioTrack?.play();
-                                    setAudioTrack(user.audioTrack || null);
+                                    const track = user.audioTrack || null;
+                                    if (track && !isMuted) track.play();
+                                    setAudioTrack(track);
                                 }
                             } catch (e) {}
                         });
@@ -101,6 +105,21 @@ export const AgoraVideoPlayer: React.FC<AgoraVideoPlayerProps> = ({ channelName,
         }
     }, [videoTrack]);
 
+    useEffect(() => {
+        if (audioTrack) {
+            if (isMuted) {
+                audioTrack.stop();
+            } else {
+                audioTrack.play();
+                audioTrack.setVolume(volume);
+            }
+        }
+    }, [isMuted, audioTrack, volume]);
+
+    const toggleMute = () => {
+        setIsMuted(!isMuted);
+    };
+
     return (
         <div className="relative w-full aspect-video bg-black rounded-lg overflow-hidden border border-foreground/10 group">
             <div ref={containerRef} className="w-full h-full" />
@@ -122,10 +141,37 @@ export const AgoraVideoPlayer: React.FC<AgoraVideoPlayerProps> = ({ channelName,
                 </div>
             )}
 
-            {/* Bottom Controls Placeholder */}
-            <div className="absolute bottom-0 inset-x-0 h-12 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-center px-4">
+            {/* Bottom Controls */}
+            <div className="absolute bottom-0 inset-x-0 h-12 bg-gradient-to-t from-black/90 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-between px-4">
                 <div className="text-[9px] font-mono text-white/50 uppercase">
                     Agora Professional Stream
+                </div>
+                
+                <div className="flex items-center gap-3">
+                    {!isMuted && (
+                        <div className="flex items-center gap-2 bg-white/5 px-2 py-1 rounded-full border border-white/10 group/vol">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white/50"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon></svg>
+                            <input 
+                                type="range" 
+                                min="0" 
+                                max="100" 
+                                value={volume} 
+                                onChange={(e) => setVolume(parseInt(e.target.value))}
+                                className="w-16 h-1 bg-white/20 rounded-lg appearance-none cursor-pointer accent-white"
+                            />
+                        </div>
+                    )}
+                    <button 
+                        onClick={toggleMute}
+                        className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+                        title={isMuted ? "Unmute" : "Mute"}
+                    >
+                        {isMuted ? (
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 5L6 9H2v6h4l5 4V5z"></path><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg>
+                        ) : (
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 5L6 9H2v6h4l5 4V5z"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+                        )}
+                    </button>
                 </div>
             </div>
         </div>

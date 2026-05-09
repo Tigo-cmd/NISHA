@@ -65,12 +65,6 @@ function OverviewTab({ agent }: { agent: Agent }) {
     const { masters } = useStore();
     const master = masters.find((m) => m.id === agent.masterId);
 
-    const events = [
-        { event: "Voice Pattern", confidence: 0.84, time: "14:42:01", status: "ignore" },
-        { event: "Door Slam", confidence: 0.92, time: "14:38:22", status: "logged" },
-        { event: "Motion Detected", confidence: 0.95, time: "14:21:45", status: "alert" },
-    ];
-
     return (
         <div className="space-y-6">
             <div className="grid grid-cols-2 gap-3">
@@ -92,7 +86,7 @@ function OverviewTab({ agent }: { agent: Agent }) {
 
             <div className="space-y-3">
                 <TelemetryBar label="CPU" value={agent.cpuUsage} max={100} unit="%" />
-                <TelemetryBar label="RAM" value={agent.ramUsage} max={8} unit=" MB" />
+                <TelemetryBar label="RAM" value={agent.ramUsage} max={4} unit=" MB" />
                 <TelemetryBar label="Temperature" value={agent.temp} max={80} unit="°C" />
                 <TelemetryBar label="Battery" value={agent.battery} max={100} unit="%" />
             </div>
@@ -123,23 +117,7 @@ function OverviewTab({ agent }: { agent: Agent }) {
                 </div>
             )}
 
-            <div>
-                <div className="flex items-center gap-2 text-muted-foreground mb-3">
-                    <Clock size={14} />
-                    <span className="text-xs font-mono uppercase">Recent Events</span>
-                </div>
-                <div className="space-y-2">
-                    {events.map((event, i) => (
-                        <div key={i} className="flex items-center justify-between p-2.5 bg-surface/50 rounded border border-foreground/5 text-xs">
-                            <div className="flex items-center gap-3">
-                                <span className="text-muted-foreground font-mono">{event.time}</span>
-                                <span className="text-foreground">{event.event}</span>
-                            </div>
-                            <span className="text-muted-foreground font-mono">{(event.confidence * 100).toFixed(0)}%</span>
-                        </div>
-                    ))}
-                </div>
-            </div>
+            {/* AI events placeholder */}
 
             <div className="space-y-2 text-xs">
                 <div className="flex justify-between">
@@ -243,15 +221,9 @@ function AudioTab({ agent }: { agent: Agent }) {
             </div>
 
             <div>
-                <span className="text-xs font-mono text-muted-foreground uppercase">Frequency Spectrum</span>
-                <div className="mt-2 flex items-end gap-[2px] h-16">
-                    {Array.from({ length: 32 }, (_, i) => (
-                        <div
-                            key={i}
-                            className="flex-1 bg-foreground/30 rounded-t-sm transition-all"
-                            style={{ height: `${Math.random() * 100}%`, opacity: 0.3 + Math.random() * 0.7 }}
-                        />
-                    ))}
+                <span className="text-xs font-mono text-muted-foreground uppercase">AI Signal Analysis</span>
+                <div className="mt-2 bg-foreground/5 rounded-lg h-16 flex items-center justify-center border border-dashed border-foreground/10">
+                    <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">Awaiting AI Telemetry Relay...</span>
                 </div>
             </div>
         </div>
@@ -428,50 +400,26 @@ function AnalyticsTab({ agent }: { agent: Agent }) {
                         <Eye size={12} />
                         <span className="text-[10px] font-mono uppercase">Detections (24h)</span>
                     </div>
-                    <div className="text-sm font-display text-foreground">{Math.floor(Math.random() * 20 + 3)}</div>
+                    <div className="text-sm font-display text-muted-foreground italic">PENDING</div>
                 </div>
             </div>
 
-            <div>
-                <span className="text-xs font-mono text-muted-foreground uppercase">Activity (24h)</span>
-                <div className="mt-2 flex items-end gap-[2px] h-20">
-                    {Array.from({ length: 24 }, (_, i) => {
-                        const val = Math.random() * 100;
-                        return (
-                            <div
-                                key={i}
-                                className="flex-1 bg-foreground/20 rounded-t-sm"
-                                style={{ height: `${val}%` }}
-                            />
-                        );
-                    })}
+            <div className="bg-surface/50 p-4 rounded-lg border border-foreground/5 border-dashed">
+                <div className="flex items-center gap-2 text-muted-foreground mb-3">
+                    <Activity size={14} />
+                    <span className="text-xs font-mono uppercase">AI Pattern Recognition</span>
                 </div>
-                <div className="flex justify-between text-[9px] font-mono text-muted-foreground mt-1">
-                    <span>00:00</span>
-                    <span>12:00</span>
-                    <span>Now</span>
+                <div className="space-y-2">
+                    <div className="h-1.5 w-full bg-foreground/5 rounded-full overflow-hidden">
+                        <div className="h-full w-1/3 bg-foreground/20 animate-pulse" />
+                    </div>
+                    <div className="text-[9px] font-mono text-muted-foreground uppercase text-center">
+                        Synthesizing activity patterns...
+                    </div>
                 </div>
             </div>
 
-            <div>
-                <span className="text-xs font-mono text-muted-foreground uppercase">Event History</span>
-                <div className="mt-2 space-y-2">
-                    {[
-                        { type: "Motion", time: "14:21", detail: "East corridor" },
-                        { type: "Audio spike", time: "13:45", detail: "620 dB" },
-                        { type: "Motion", time: "12:08", detail: "Entrance" },
-                        { type: "Threshold", time: "09:33", detail: "Audio 540 dB" },
-                    ].map((e, i) => (
-                        <div key={i} className="flex items-center justify-between text-xs p-2 bg-surface/50 rounded border border-foreground/5">
-                            <div className="flex items-center gap-2">
-                                <span className="text-muted-foreground font-mono">{e.time}</span>
-                                <span className="text-foreground">{e.type}</span>
-                            </div>
-                            <span className="text-muted-foreground font-mono">{e.detail}</span>
-                        </div>
-                    ))}
-                </div>
-            </div>
+            {/* AI event history placeholder */}
         </div>
     );
 }

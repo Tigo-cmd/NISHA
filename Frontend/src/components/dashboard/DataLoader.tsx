@@ -21,7 +21,7 @@ const mapBackendAgent = (backendAgent: any): StoreAgent => {
     capabilities: Object.keys(backendAgent.capabilities || {}).filter(k => backendAgent.capabilities[k]) as StoreAgent['capabilities'],
     lastSeen: backendAgent.last_heartbeat ? new Date(backendAgent.last_heartbeat).toLocaleString() : "Never",
     cpuUsage: backendAgent.config?.cpu_usage_percent || 0,
-    ramUsage: backendAgent.config?.free_heap_bytes ? 2.5 : 0, // Mock formatting
+    ramUsage: backendAgent.config?.free_heap_bytes ? Math.round(backendAgent.config.free_heap_bytes / 1024 / 1024 * 10) / 10 : 0, 
     temp: backendAgent.config?.temperature_c || 0,
     audioLevel: backendAgent.config?.current_db || 0,
     motionDetected: backendAgent.config?.motion_detected || false,
@@ -99,7 +99,9 @@ export function DataLoader() {
       }
 
       if (audioEvents && audioEvents.length > 0) {
-        // Map backend audio events to frontend Alerts
+        // [DEPRECATED] Mapping raw audio events to primary Alerts. 
+        // Reserved for future AI-driven analysis.
+        /*
         const alerts = audioEvents.map((evt: any) => ({
           id: evt.event_id,
           type: "AUDIO" as const,
@@ -110,8 +112,11 @@ export function DataLoader() {
           acknowledged: evt.confirmed || false
         }));
         setAlerts(alerts);
+        */
+        setAlerts([]); // Clear active alerts to make room for AI
 
-        // Map backend audio events to frontend SecurityEvents
+        // [DEPRECATED] Mapping raw audio events to SecurityEvents feed.
+        /*
         const securityEvents = audioEvents.map((evt: any) => ({
           id: evt.event_id,
           type: "Audio Trigger" as const,
@@ -122,6 +127,7 @@ export function DataLoader() {
           agentId: evt.agent_id
         }));
         setSecurityEvents(securityEvents);
+        */
       }
     } catch (error) {
       console.error("DataLoader error fetching live data:", error);
