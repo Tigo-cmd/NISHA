@@ -39,6 +39,10 @@ coverage/
 *.tsbuildinfo
 next-env.d.ts
 
+# metro cache
+.mcp.cache/
+.metro-cache/
+
 # IDE
 .vscode/
 .idea/

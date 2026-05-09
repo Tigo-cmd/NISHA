@@ -18,6 +18,8 @@ from nisha_master.interfaces.agent_ws import AgentWebSocketServer
 from nisha_master.interfaces.backend_client import BackendWebSocketClient
 from nisha_master.interfaces.dashboard import router as dashboard_router
 from nisha_master.core.hardware_worker import HardwareIngestionWorker
+from agora_token_builder import RtcTokenBuilder
+import time
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -135,6 +137,30 @@ app.include_router(dashboard_router)
 # Mount static files for the Vanilla JS Dashboard
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+@app.get("/api/agora/token")
+async def get_agora_token(channelName: str, uid: int = 0, role: int = 1):
+    """
+    Generates an Agora RTC token for the given channel.
+    role=1 is kRolePublisher (default), role=2 is kRoleSubscriber.
+    """
+    expiration_time_in_seconds = 3600
+    current_timestamp = int(time.time())
+    privilege_expired_ts = current_timestamp + expiration_time_in_seconds
+
+    try:
+        token = RtcTokenBuilder.buildTokenWithUid(
+            settings.agora_app_id,
+            settings.agora_app_certificate,
+            channelName,
+            uid,
+            role,
+            privilege_expired_ts
+        )
+        return {"token": token, "appId": settings.agora_app_id}
+    except Exception as e:
+        logger.error(f"Error generating Agora token: {e}")
+        return {"error": str(e)}, 500
 
 @app.get("/")
 async def serve_dashboard():

@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/Badge";
 import { apiService } from "@/services/apiService";
 import { cn } from "@/lib/utils";
 import { WaveformVisualizer } from "@/components/dashboard/WaveformVisualizer";
+import { AgoraVideoPlayer } from "@/components/dashboard/AgoraVideoPlayer";
 import {
     ArrowLeft,
     Settings,
@@ -98,6 +99,17 @@ export default function AgentDetailPage() {
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <div className="lg:col-span-2 space-y-8">
+                    <div className="bg-surface/70 p-6 rounded-lg border border-foreground/5">
+                        <div className="flex items-center gap-2 mb-6">
+                            <Activity size={16} className="text-foreground" />
+                            <h3 className="text-foreground font-display text-sm uppercase tracking-widest">Live Visual Surveillance</h3>
+                        </div>
+                        <AgoraVideoPlayer 
+                            channelName={`nisha_stream_${id}`} 
+                            agentId={id} 
+                        />
+                    </div>
+
                     <div className="bg-surface/70 p-6 rounded-lg border border-foreground/5">
                         <div className="flex justify-between items-center mb-6">
                             <div className="flex items-center gap-2">

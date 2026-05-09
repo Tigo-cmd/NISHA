@@ -20,6 +20,72 @@ const audioQueue = [];
 let videoPlaying = false;
 let audioPlaying = false;
 
+// --- Agora Video/Audio Manager ---
+class AgoraManager {
+    constructor() {
+        this.client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+        this.localTracks = { video: null, audio: null };
+        this.remoteUsers = {};
+        this.isActive = false;
+        
+        this.client.on("user-published", (user, mediaType) => this.handleUserPublished(user, mediaType));
+        this.client.on("user-unpublished", (user) => this.handleUserUnpublished(user));
+    }
+
+    async join(channelName) {
+        try {
+            if (this.isActive) await this.leave();
+            
+            // 1. Fetch token from our Master API
+            const response = await fetch(`${API_URL}/agora/token?channelName=${channelName}`);
+            const data = await response.json();
+            
+            if (data.error) throw new Error(data.error);
+
+            // 2. Join the channel
+            await this.client.join(data.appId, channelName, data.token, null);
+            this.isActive = true;
+            console.log(`[Agora] Joined channel: ${channelName}`);
+        } catch (e) {
+            console.error("[Agora] Join failed:", e);
+        }
+    }
+
+    async leave() {
+        if (!this.isActive) return;
+        await this.client.leave();
+        this.isActive = false;
+        document.getElementById('remote-video').innerHTML = '';
+        console.log("[Agora] Left channel");
+    }
+
+    async handleUserPublished(user, mediaType) {
+        await this.client.subscribe(user, mediaType);
+        console.log(`[Agora] Subscribed to ${mediaType} from ${user.uid}`);
+
+        if (mediaType === "video") {
+            const remotePlayerContainer = document.getElementById('remote-video');
+            user.videoTrack.play(remotePlayerContainer);
+            // Hide legacy video elements
+            videoEl.classList.add('hidden');
+            videoCanvas.classList.add('hidden');
+            remotePlayerContainer.classList.remove('hidden');
+        }
+
+        if (mediaType === "audio") {
+            user.audioTrack.play();
+            // Hide legacy audio UI if needed, or keep visualizer
+            document.getElementById('audioSection').classList.remove('hidden');
+            badgeAudioQueue.innerText = `AGORA LIVE`;
+        }
+    }
+
+    handleUserUnpublished(user) {
+        console.log(`[Agora] User ${user.uid} unpublished`);
+    }
+}
+const agoraManager = new AgoraManager();
+
 // --- Real-time Audio Stream Player (Web Audio API) ---
 class RealtimeAudioPlayer {
     constructor() {
@@ -212,6 +278,9 @@ function selectAgent(id) {
     // Clear queues
     clearQueues();
     
+    // Join Agora channel for this agent
+    agoraManager.join(`nisha_stream_${id}`);
+    
     updateSidebar();
     
     const agent = agents.find(a => a.agent_id === id);
@@ -320,6 +389,7 @@ function clearQueues() {
     videoEl.src = '';
     audioEl.src = '';
     document.getElementById('audioSection').classList.add('hidden');
+    agoraManager.leave();
 }
 
 // ---------- UI Effects ----------

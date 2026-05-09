@@ -15,6 +15,8 @@ from nisha.api.v1.router import v1_router
 from nisha.api.v1.system import set_connection_manager as set_system_cm
 from nisha.api.v1.ws import set_connection_manager as set_ws_cm
 from nisha.config import settings
+from agora_token_builder import RtcTokenBuilder
+import time
 from nisha.dependencies import init_singletons
 from nisha.infrastructure.cache.redis_cache import RedisCache
 from nisha.infrastructure.database.repositories.agent_repo import SqlAlchemyAgentRepository
@@ -190,6 +192,29 @@ def create_app() -> FastAPI:
     # Register routes and error handlers
     app.include_router(v1_router)
     register_error_handlers(app)
+
+    @app.get("/api/agora/token")
+    async def get_agora_token(channelName: str, uid: int = 0, role: int = 1):
+        """
+        Generates an Agora RTC token for the given channel.
+        role=1 is kRolePublisher (default), role=2 is kRoleSubscriber.
+        """
+        expiration_time_in_seconds = 3600
+        current_timestamp = int(time.time())
+        privilege_expired_ts = current_timestamp + expiration_time_in_seconds
+
+        try:
+            token = RtcTokenBuilder.buildTokenWithUid(
+                settings.agora_app_id,
+                settings.agora_app_certificate,
+                channelName,
+                uid,
+                role,
+                privilege_expired_ts
+            )
+            return {"token": token, "appId": settings.agora_app_id}
+        except Exception as e:
+            return {"error": str(e)}, 500
 
     @app.get("/health")
     async def health_check():

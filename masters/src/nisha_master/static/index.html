@@ -7,6 +7,8 @@
     <link rel="stylesheet" href="/static/style.css">
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Agora SDK -->
+    <script src="https://download.agora.io/sdk/release/AgoraRTC_N.js"></script>
 </head>
 <body>
     <div class="dashboard-layout">
@@ -48,7 +50,8 @@
                 <!-- Video Section -->
                 <div class="video-player-card">
                     <div class="video-wrapper">
-                        <img id="mainVideo" class="stream-video" alt="Live Feed" />
+                        <div id="remote-video" class="stream-video"></div>
+                        <img id="mainVideo" class="stream-video hidden" alt="Live Feed" />
                         <canvas id="videoCanvas" class="stream-video hidden"></canvas>
                         
                         <div class="video-overlay">
@@ -104,7 +107,7 @@
         </main>
     </div>
 
-    <script src="/static/dashboard.js?v=5"></script>
+    <script src="/static/dashboard.js?v=6"></script>
     <script>
         // Initialize Lucide icons
         lucide.createIcons();

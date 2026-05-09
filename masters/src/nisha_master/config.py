@@ -34,6 +34,10 @@ class Settings(BaseSettings):
         {"id": "A4CF1208C4BC", "url": "http://192.168.18.20:81/stream", "type": "VIDEO"}
     ]
 
+    # Agora Config
+    agora_app_id: str = "8aab67dc71304ae595f064ea51f12082"
+    agora_app_certificate: str = "4130348368c94fd2b8a008676187b394"
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 

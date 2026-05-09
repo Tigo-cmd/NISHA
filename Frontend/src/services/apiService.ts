@@ -40,6 +40,19 @@ const handleApiError = (error: any, message: string): never => {
 
 // Main API service
 export const apiService = {
+  // --- Agora ---
+  async getAgoraToken(channelName: string): Promise<{ token: string, appId: string }> {
+    try {
+      const response = await fetchWithAuth(`${API_BASE_URL}/api/agora/token?channelName=${channelName}`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      return handleApiError(error, 'Failed to fetch Agora token');
+    }
+  },
+
   // --- Agents ---
   async getAgents(filters?: { status?: string; master_id?: string; location_zone?: string; offset?: number; limit?: number }): Promise<Agent[]> {
     try {
