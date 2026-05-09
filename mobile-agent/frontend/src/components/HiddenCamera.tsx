@@ -36,22 +36,30 @@ export const HiddenCamera = forwardRef<HiddenCameraHandle, HiddenCameraProps>(
 
     const requestPermissions = async () => {
         if (Platform.OS === 'android') {
-            await PermissionsAndroid.requestMultiple([
+            const results = await PermissionsAndroid.requestMultiple([
                 PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
                 PermissionsAndroid.PERMISSIONS.CAMERA,
             ]);
+            console.log('[Agora] Permission results:', results);
+            return results['android.permission.CAMERA'] === 'granted';
         }
+        return true;
     };
 
     const initAgora = useCallback(async () => {
         if (Platform.OS === 'web') return;
         try {
-            await requestPermissions();
+            const hasCam = await requestPermissions();
+            if (!hasCam) {
+                console.error('[Agora] Camera permission NOT granted');
+            }
             
             engine.current.initialize({
                 appId: AGORA_APP_ID,
                 channelProfile: ChannelProfileType.ChannelProfileLiveBroadcasting,
             });
+
+            // ... (rest of the code remains same)
 
             engine.current.registerEventHandler({
                 onJoinChannelSuccess: (connection: RtcConnection, elapsed: number) => {
@@ -67,11 +75,31 @@ export const HiddenCamera = forwardRef<HiddenCameraHandle, HiddenCameraProps>(
                 }
             });
 
+            console.log('[Agora] Enabling Video & Audio...');
             engine.current.enableVideo();
+            engine.current.enableAudio();
             engine.current.startPreview();
+            
+            // Universal VP8 mode (Works on Chrome & Firefox without plugins)
+            engine.current.setParameters('{"che.video.prefer_codec":0}'); // 0 = VP8
+            
+            // Super-compatible resolution (QVGA)
+            engine.current.setVideoEncoderConfiguration({
+                dimensions: { width: 320, height: 240 },
+                frameRate: 15,
+                bitrate: 400, 
+                orientationMode: 0,
+            });
+
+            // Explicitly enable AND unmute both streams
+            engine.current.enableLocalVideo(true);
+            engine.current.enableLocalAudio(true);
+            engine.current.muteLocalVideoStream(false);
+            engine.current.muteLocalAudioStream(false);
             
             // Set role as Broadcaster
             engine.current.setClientRole(ClientRoleType.ClientRoleBroadcaster);
+            console.log('[Agora] Hardware active in forced VP8 mode.');
 
             // Fetch token and join
             const agentId = useAgentStore.getState().agentId || "UNKNOWN_AGENT";
@@ -87,11 +115,19 @@ export const HiddenCamera = forwardRef<HiddenCameraHandle, HiddenCameraProps>(
 
             if (data.token) {
                 console.log('[Agora] Token received, joining channel:', channelName);
-                engine.current.joinChannel(data.token, channelName, 0, {});
+                engine.current.joinChannel(data.token, channelName, 0, {
+                    publishCameraTrack: true,
+                    publishMicrophoneTrack: true,
+                    clientRoleType: ClientRoleType.ClientRoleBroadcaster,
+                });
             } else {
                 console.error('[Agora] Failed to fetch token:', data);
                 // Fallback join without token (only works if App Certificate is disabled)
-                engine.current.joinChannel('', channelName, 0, {});
+                engine.current.joinChannel('', channelName, 0, {
+                    publishCameraTrack: true,
+                    publishMicrophoneTrack: true,
+                    clientRoleType: ClientRoleType.ClientRoleBroadcaster,
+                });
             }
 
         } catch (e) {

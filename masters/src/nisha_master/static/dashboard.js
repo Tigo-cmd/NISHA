@@ -30,6 +30,12 @@ class AgoraManager {
         
         this.client.on("user-published", (user, mediaType) => this.handleUserPublished(user, mediaType));
         this.client.on("user-unpublished", (user) => this.handleUserUnpublished(user));
+        this.client.on("exception", (event) => {
+            console.warn("[Agora] Exception detected:", event);
+            if (event.code === 1005) { // RECV_VIDEO_DECODE_FAILED
+                console.log("[Agora] Decoding failed. Attempting to re-subscribe...");
+            }
+        });
     }
 
     async join(channelName) {
@@ -60,28 +66,37 @@ class AgoraManager {
     }
 
     async handleUserPublished(user, mediaType) {
-        await this.client.subscribe(user, mediaType);
-        console.log(`[Agora] Subscribed to ${mediaType} from ${user.uid}`);
+        console.log(`[Agora] User ${user.uid} is publishing ${mediaType}`);
+        try {
+            await this.client.subscribe(user, mediaType);
+            console.log(`[Agora] Subscribed to ${mediaType} from ${user.uid}`);
+            
+            if (mediaType === "video") {
+                const remotePlayerContainer = document.getElementById('remote-video');
+                console.log(`[Agora] Playing video track into:`, remotePlayerContainer);
+                user.videoTrack.play(remotePlayerContainer);
+                
+                videoEl.classList.add('hidden');
+                videoCanvas.classList.add('hidden');
+                remotePlayerContainer.classList.remove('hidden');
+            }
 
-        if (mediaType === "video") {
-            const remotePlayerContainer = document.getElementById('remote-video');
-            user.videoTrack.play(remotePlayerContainer);
-            // Hide legacy video elements
-            videoEl.classList.add('hidden');
-            videoCanvas.classList.add('hidden');
-            remotePlayerContainer.classList.remove('hidden');
-        }
-
-        if (mediaType === "audio") {
-            user.audioTrack.play();
-            // Hide legacy audio UI if needed, or keep visualizer
-            document.getElementById('audioSection').classList.remove('hidden');
-            badgeAudioQueue.innerText = `AGORA LIVE`;
+            if (mediaType === "audio") {
+                console.log(`[Agora] Playing audio track...`);
+                user.audioTrack.play();
+                document.getElementById('audioSection').classList.remove('hidden');
+                badgeAudioQueue.innerText = `AGORA LIVE`;
+            }
+        } catch (e) {
+            console.error(`[Agora] Subscription failed for ${mediaType}:`, e);
         }
     }
 
-    handleUserUnpublished(user) {
-        console.log(`[Agora] User ${user.uid} unpublished`);
+    handleUserUnpublished(user, mediaType) {
+        console.log(`[Agora] User ${user.uid} unpublished ${mediaType}`);
+        if (mediaType === 'video') {
+            document.getElementById('remote-video').classList.add('hidden');
+        }
     }
 }
 const agoraManager = new AgoraManager();
@@ -316,6 +331,10 @@ function updateAgentView(agent) {
 }
 
 async function fetchMedia(agentId, type) {
+    // If Agora is active, don't poll legacy media
+    if (agoraManager && agoraManager.isActive) {
+        return;
+    }
     try {
         const res = await fetch(`${API_URL}/agent/${agentId}/media/${type}`);
         const data = await res.json();
