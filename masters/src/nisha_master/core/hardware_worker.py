@@ -27,25 +27,48 @@ class HardwareIngestionWorker:
         self._tasks = []
         self._running = False
         self._sequence_map = {}
+        self._url_map = {} # Track active URLs to detect changes
 
     async def start(self, hardware_agents: list[dict]):
         self._running = True
         for agent in hardware_agents:
+            # Map static config agents
+            if 'id' in agent and 'url' in agent:
+                self._url_map[agent['id']] = agent['url']
             await self.add_agent(agent)
 
     async def add_agent(self, agent_config: dict):
         """Dynamically add and start a hardware agent worker."""
         agent_id = agent_config.get("id")
+        new_url = agent_config.get("url")
         if not agent_id or not self._running:
             return
             
-        # Don't start duplicate tasks for the same ID
-        if agent_id in self._sequence_map and any(not t.done() for t in self._tasks if getattr(t, 'agent_id', None) == agent_id):
-            logger.info(f"Worker already running for agent: {agent_id}")
-            return
+        # Check if the URL has changed for an existing agent
+        url_changed = agent_id in self._url_map and self._url_map[agent_id] != new_url
+        
+        # If worker exists, check if we need to restart it
+        existing_task = next((t for t in self._tasks if getattr(t, 'agent_id', None) == agent_id and not t.done()), None)
+        
+        if existing_task:
+            if not url_changed:
+                logger.info(f"Worker already running for agent: {agent_id} with correct URL.")
+                return
+            else:
+                logger.info(f"URL change detected for {agent_id}: {self._url_map[agent_id]} -> {new_url}. Restarting worker...")
+                existing_task.cancel()
+                try:
+                    await existing_task
+                except asyncio.CancelledError:
+                    pass
+                self._tasks.remove(existing_task)
+
+        # Update the URL map
+        if new_url:
+            self._url_map[agent_id] = new_url
 
         if agent_config.get("type") == "VIDEO":
-            logger.info(f"Starting Video Ingestion Worker for hardware agent: {agent_id} at {agent_config.get('url')}")
+            logger.info(f"Starting Video Ingestion Worker for hardware agent: {agent_id} at {new_url}")
             task = asyncio.create_task(self._consume_mjpeg(agent_config))
             # Tag the task for tracking
             setattr(task, 'agent_id', agent_id)
