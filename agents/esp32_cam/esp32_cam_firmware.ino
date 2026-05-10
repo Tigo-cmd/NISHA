@@ -226,13 +226,28 @@ void setup() {
     return;
   }
 
-  // WiFi Init
+  // WiFi Init (Robust sequence for ESP32-CAM)
+  WiFi.disconnect(true);
+  delay(100);
+  WiFi.mode(WIFI_STA);
+  WiFi.setHostname(agent_name);
   WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
+  
+  Serial.print("Connecting to WiFi");
+  int wifi_retry = 0;
+  while (WiFi.status() != WL_CONNECTED && wifi_retry < 40) {
     delay(500);
     Serial.print(".");
+    wifi_retry++;
   }
-  Serial.println("\nWiFi connected");
+  
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.printf("\n[WiFi] Connected! IP: %s, RSSI: %d dBm\n", WiFi.localIP().toString().c_str(), WiFi.RSSI());
+    WiFi.setSleep(false); // Critical for MJPEG stability
+  } else {
+    Serial.println("\n[WiFi] Connection Failed. Rebooting...");
+    ESP.restart();
+  }
 
   // Sync Time (Required for WSS)
   configTime(0, 0, "pool.ntp.org");
