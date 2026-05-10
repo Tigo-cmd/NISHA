@@ -56,11 +56,15 @@ class AgentWebSocketServer:
                             # Support for dynamic hardware stream registration
                             stream_url = handshake.get("stream_url")
                             if stream_url and self.hw_worker:
-                                asyncio.create_task(self.hw_worker.add_agent({
-                                    "id": agent_id,
-                                    "url": stream_url,
-                                    "type": "VIDEO" # Assume VIDEO for cam handshakes
-                                }))
+                                # Defensive check for dynamically added hardware agents
+                                if hasattr(self.hw_worker, 'add_agent'):
+                                    asyncio.create_task(self.hw_worker.add_agent({
+                                        "id": agent_id,
+                                        "url": stream_url,
+                                        "type": "VIDEO"
+                                    }))
+                                else:
+                                    logger.error(f"[ERROR] HardwareIngestionWorker missing 'add_agent' method. Type: {type(self.hw_worker)}")
 
                             # Initialize agent stats
                             if agent_id not in self.metrics_store.agent_stats:
