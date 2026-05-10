@@ -1,6 +1,6 @@
 /*
  * NISHA Sentinel - ESP32-CAM Fixed Node Firmware
- * Optimized for stability with WSS and MJPEG
+ * STABILITY RECOVERY VERSION
  */
 
 #include "esp_camera.h"
@@ -246,20 +246,29 @@ void setupCamera() {
     config.pin_sscb_scl = SIOC_GPIO_NUM;
     config.pin_pwdn = PWDN_GPIO_NUM;
     config.pin_reset = RESET_GPIO_NUM;
-    config.xclk_freq_hz = 20000000;
+    config.xclk_freq_hz = 10000000; // Safer clock for clones (10MHz)
     config.pixel_format = PIXFORMAT_JPEG;
 
-    // Stability optimizations
-    config.frame_size = FRAMESIZE_QVGA; 
-    config.jpeg_quality = 20;          
-    config.fb_count = 1;               
+    // Detect PSRAM for best quality
+    if(psramFound()) {
+        Serial.println("[CAM] PSRAM found - Using VGA");
+        config.frame_size = FRAMESIZE_VGA;
+        config.jpeg_quality = 12;
+        config.fb_count = 2;
+    } else {
+        Serial.println("[CAM] PSRAM NOT found - Using QVGA");
+        config.frame_size = FRAMESIZE_QVGA;
+        config.jpeg_quality = 15;
+        config.fb_count = 1;
+    }
 
     esp_err_t err = esp_camera_init(&config);
     if (err != ESP_OK) {
         Serial.printf("[CAM] Init failed: 0x%x\n", err);
+        delay(5000);
         ESP.restart();
     }
-    Serial.println("[CAM] Camera initialized");
+    Serial.println("[CAM] Camera initialized successfully");
 }
 
 // =====================================================
@@ -268,12 +277,11 @@ void setupCamera() {
 void setup() {
     Serial.begin(115200);
     delay(1000);
-    Serial.println("\n=== NISHA CAM NODE STARTING ===");
+    Serial.println("\n=== NISHA RECOVERY STARTING ===");
 
     WiFi.disconnect(true);
     delay(100);
     WiFi.mode(WIFI_STA);
-    WiFi.setSleep(false);
     WiFi.begin(ssid, password);
 
     Serial.print("[WiFi] Connecting");
