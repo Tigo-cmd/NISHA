@@ -1,10 +1,6 @@
 /*
  * NISHA Sentinel - ESP32-CAM Fixed Node Firmware
- * Refined version aligned with NISHA Audio Node architecture
- * - REST registration
- * - Secure Cloudflare WSS connection
- * - MJPEG stream URL sent via websocket handshake
- * - Unified HARDWARE mode for Master ingestion
+ * Optimized for stability with WSS and MJPEG
  */
 
 #include "esp_camera.h"
@@ -29,7 +25,6 @@ const char* ws_host = "m01ws.buildwave.pro";
 const int ws_port = 443;
 const char* ws_path = "/";
 const char* api_key = "nisha_master_key_2024_secure";
-
 const char* master_id = "MASTER_001";
 
 // =====================================================
@@ -185,7 +180,6 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
             String macId = getMacID();
             String stream_url = "http://" + WiFi.localIP().toString() + ":81/stream";
 
-            // IMPORTANT: mode must be HARDWARE for MJPEG relay trigger
             String handshake =
                 String("{") +
                 "\"type\":\"HANDSHAKE\"," +
@@ -202,11 +196,29 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
         }
 
         case WStype_TEXT:
+        {
             Serial.printf("[WS] MSG: %s\n", payload);
+            if (strstr((char*)payload, "REBOOT")) {
+                Serial.println("[SYS] Rebooting...");
+                ESP.restart();
+            }
+            if (strstr((char*)payload, "FLIP")) {
+                sensor_t * s = esp_camera_sensor_get();
+                if (s) s->set_hmirror(s, !s->status.hmirror);
+            }
             break;
+        }
 
         case WStype_ERROR:
             Serial.printf("[WS] ERROR: %s\n", payload ? (char*)payload : "unknown");
+            break;
+
+        case WStype_PING:
+            Serial.println("[WS] PING");
+            break;
+
+        case WStype_PONG:
+            Serial.println("[WS] PONG");
             break;
     }
 }
@@ -237,15 +249,10 @@ void setupCamera() {
     config.xclk_freq_hz = 20000000;
     config.pixel_format = PIXFORMAT_JPEG;
 
-    if(psramFound()) {
-        config.frame_size = FRAMESIZE_VGA;
-        config.jpeg_quality = 12;
-        config.fb_count = 2;
-    } else {
-        config.frame_size = FRAMESIZE_QVGA;
-        config.jpeg_quality = 15;
-        config.fb_count = 1;
-    }
+    // Stability optimizations
+    config.frame_size = FRAMESIZE_QVGA; 
+    config.jpeg_quality = 20;          
+    config.fb_count = 1;               
 
     esp_err_t err = esp_camera_init(&config);
     if (err != ESP_OK) {
@@ -292,7 +299,6 @@ void setup() {
     Serial.printf("[WS] Connecting to wss://%s:%d%s\n", ws_host, ws_port, ws_path);
     webSocket.beginSSL(ws_host, ws_port, ws_path);
     
-    // Add Origin and Authorization headers for Cloudflare / Master security
     String authHeader = "Bearer " + String(api_key);
     webSocket.setExtraHeaders(("Origin: https://m01ws.buildwave.pro\r\nAuthorization: " + authHeader).c_str());
     
