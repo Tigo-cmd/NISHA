@@ -85,6 +85,7 @@ class AudioEventType(StrEnum):
     EMERGENCY = "emergency"
     SOS = "sos"
     AMBIENT = "ambient"
+    SHOUT = "shout"
 
 
 class AudioLanguage(StrEnum):
@@ -109,6 +110,7 @@ class AudioStreamingMode(StrEnum):
 
 class BehaviorClass(StrEnum):
     NORMAL = "normal"
+    NONVIOLENCE = "nonviolence"
     VIOLENCE = "violence"
     SUSPICIOUS = "suspicious"
     PANIC = "panic"
