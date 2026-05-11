@@ -21,9 +21,11 @@ class HardwareIngestionWorker:
     """Worker responsible for ingesting streams from hardware agents (ESP32-CAM, etc.)
     and relaying them to the backend via the standard NISHA protocol.
     """
-    def __init__(self, stream_queue: asyncio.Queue, telemetry_queue: asyncio.Queue):
+    def __init__(self, stream_queue: asyncio.Queue, telemetry_queue: asyncio.Queue, ws_manager=None, metrics_store=None):
         self.stream_queue = stream_queue
         self.telemetry_queue = telemetry_queue
+        self.ws_manager = ws_manager
+        self.metrics_store = metrics_store
         self._tasks = []
         self._running = False
         self._sequence_map = {}
@@ -83,12 +85,13 @@ class HardwareIngestionWorker:
         if self._tasks:
             await asyncio.gather(*self._tasks, return_exceptions=True)
         self._tasks = []
-
-    async def _consume_mjpeg(self, agent_config: dict):
-        agent_id = agent_config["id"]
-        url = agent_config["url"]
+    async def _consume_mjpeg(self, config: dict):
+        agent_id = config.get("id")
+        url = config.get("url")
         self._sequence_map[agent_id] = 0
-        
+        logger.info(f"[Worker:{agent_id}] MJPEG ingestion starting for {url}")
+
+        retry_count = 0
         while self._running:
             try:
                 # Use a long timeout for the stream
@@ -96,11 +99,11 @@ class HardwareIngestionWorker:
                 async with aiohttp.ClientSession(timeout=timeout) as session:
                     async with session.get(url) as response:
                         if response.status != 200:
-                            logger.error(f"Hardware agent {agent_id} stream returned {response.status}")
+                            logger.error(f"[Worker:{agent_id}] HTTP {response.status} from {url}")
                             await asyncio.sleep(5)
                             continue
                         
-                        logger.info(f"Connected to ESP32-CAM: {agent_id}")
+                        logger.info(f"[Worker:{agent_id}] MJPEG Stream Connected ✅")
                         
                         buffer = bytearray()
                         async for chunk in response.content.iter_any():
@@ -152,6 +155,7 @@ class HardwareIngestionWorker:
         # Inject standard telemetry metadata
         meta = {
             "agent_id": agent_id,
+            "agent_type": "HARDWARE",
             "rssi": -42,  # Mocked for hardware agents
             "battery": 100,
             "is_hardware": True,
@@ -175,7 +179,29 @@ class HardwareIngestionWorker:
         
         full_frame = header + meta_bytes + payload
         
-        # Non-blocking put into the master's internal stream queue
+        # Local Dashboard Broadcast (Zero Latency)
+        if self.ws_manager and stream_type == STREAM_TYPE_VIDEO:
+            import base64
+            b64_frame = base64.b64encode(payload).decode('utf-8')
+            
+            # Update metrics store so dashboard shows active status
+            if self.metrics_store:
+                if agent_id not in self.metrics_store.agent_stats:
+                    self.metrics_store.agent_stats[agent_id] = {"agent_id": agent_id}
+                stats = self.metrics_store.agent_stats[agent_id]
+                stats.update(meta)
+                stats["last_seen"] = time.time()
+                stats["latest_video"] = b64_frame
+                stats["_video_mime"] = "image/jpeg"
+
+            asyncio.create_task(self.ws_manager.broadcast({
+                "type": "LIVE_FRAME",
+                "agent_id": agent_id,
+                "base64": b64_frame,
+                "mime": "image/jpeg"
+            }))
+
+        # Remote Backend Relay (Cloudflare)
         try:
             self.stream_queue.put_nowait(full_frame)
         except asyncio.QueueFull:
