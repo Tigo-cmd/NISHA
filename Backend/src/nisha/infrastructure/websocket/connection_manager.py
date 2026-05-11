@@ -167,6 +167,20 @@ class ConnectionManager:
             else: # BACKGROUND
                 if self.background_queue.qsize() < self.background_queue.maxsize * 0.95:
                     await self.background_queue.put(frame)
+
+            # Real-time Video Relay to Dashboard
+            if frame.stream_type == NISHAFrame.VIDEO:
+                agent_id = frame.metadata.get("agent_id")
+                # Only relay if there are active subscribers to prevent backend bloat
+                if self._topic_subscribers.get("all"):
+                    # logger.debug(f"Relaying live frame for agent {agent_id} ({len(frame.payload)} bytes)")
+                    asyncio.create_task(self.broadcast({
+                        "type": "LIVE_FRAME",
+                        "agent_id": agent_id,
+                        "agent_type": frame.metadata.get("agent_type", "LEGACY"),
+                        "timestamp": time.time(),
+                        "frame": base64.b64encode(frame.payload).decode('utf-8')
+                    }))
                     
             # Real-time Telemetry Broadcast for Dashboard
             # type 0x04 = LOCATION, type 0x03 = AUDIO/TELEMETRY
@@ -194,6 +208,7 @@ class ConnectionManager:
                 telemetry = {
                     "type": "NODE_DATA",
                     "agent_id": agent_id,
+                    "agent_type": frame.metadata.get("agent_type", "LEGACY"),
                     "master_id": master_id,
                     "battery": payload_data.get("battery") if payload_data.get("battery") is not None else frame.metadata.get("battery", 100),
                     "signal_strength": payload_data.get("signal") if payload_data.get("signal") is not None else frame.metadata.get("signal", -50),
