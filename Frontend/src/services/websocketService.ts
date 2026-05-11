@@ -27,6 +27,10 @@ class WebSocketService {
       this.socket.onopen = () => {
         console.log('WebSocket connection established');
         this.reconnectAttempts = 0;
+        
+        // Essential: Subscribe to all topics to receive binary relays from Masters
+        this.send({ type: 'SUBSCRIBE', target: 'all' });
+        
         toast({
           title: 'Connected',
           description: 'WebSocket connection established',
@@ -108,6 +112,14 @@ class WebSocketService {
         console.error(`Error in WebSocket listener for ${type}:`, error);
       }
     });
+  }
+
+  public send(message: any): void {
+    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+      this.socket.send(JSON.stringify(message));
+    } else {
+      console.error('WebSocket not connected, cannot send message:', message);
+    }
   }
 
   public isConnected(): boolean {
