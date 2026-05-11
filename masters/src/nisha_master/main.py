@@ -43,7 +43,8 @@ async def lifespan(app: FastAPI):
 
     # 2. Start Hardware Ingestion Worker
     logger.info("Starting Hardware Ingestion Worker...")
-    hw_worker = HardwareIngestionWorker(stream_queue, telemetry_queue)
+    from nisha_master.interfaces.dashboard import metrics_store, ws_manager
+    hw_worker = HardwareIngestionWorker(stream_queue, telemetry_queue, ws_manager=ws_manager, metrics_store=metrics_store)
     hw_task = asyncio.create_task(hw_worker.start(settings.hardware_agents))
 
     # 3. Start Agent WS Server (Port 8081)
