@@ -8,6 +8,14 @@ import { WebSocketMessageType, Agent as StoreAgent, Master as StoreMaster } from
 
 // Maps backend Agent model to frontend StoreAgent model
 const mapBackendAgent = (backendAgent: any): StoreAgent => {
+  const id = (backendAgent.agent_id || backendAgent.short_id || "").toUpperCase();
+  const isMac = /^[0-9A-Fa-f]{12}$/.test(id);
+  const isNode = id.includes("NODE") || id.includes("ESP") || id.includes("CAM");
+  
+  const agentType = backendAgent.agent_type || 
+                   (backendAgent.hardware_type === 'MOBILE' ? 'MOBILE' : 
+                    (isMac || isNode) ? 'HARDWARE' : 'MOBILE');
+                    
   return {
     id: backendAgent.agent_id || backendAgent.short_id,
     name: backendAgent.short_id || "Unknown",
@@ -27,6 +35,7 @@ const mapBackendAgent = (backendAgent: any): StoreAgent => {
     audioLevel: backendAgent.config?.current_db || 0,
     motionDetected: backendAgent.config?.motion_detected || false,
     streamUrl: backendAgent.stream_url,
+    agentType: agentType,
     position: (backendAgent.gps_lat && backendAgent.gps_lng) ? {
       lat: backendAgent.gps_lat,
       lng: backendAgent.gps_lng
