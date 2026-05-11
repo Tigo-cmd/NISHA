@@ -39,6 +39,7 @@ class AgentWebSocketServer:
         """Main handler for a connected agent."""
         agent_id = "UNKNOWN"
         agent_mode = "UNKNOWN"
+        agent_type = "LEGACY"  # Default type
         print(f"[DEBUG] New connection received on port {self.port}")
         try:
             async for message in websocket:
@@ -50,8 +51,9 @@ class AgentWebSocketServer:
                         if handshake.get("type") == "HANDSHAKE":
                             agent_id = handshake.get("agent_id", "UNKNOWN")
                             agent_mode = handshake.get("mode", "AGENT")
+                            agent_type = handshake.get("agent_type", "MOBILE" if agent_mode == "AGENT" else "LEGACY")
                             self.active_agents[agent_id] = websocket
-                            print(f"[DEBUG] Handshake successful: {agent_id} (mode: {agent_mode})")
+                            print(f"[DEBUG] Handshake successful: {agent_id} (type: {agent_type}, mode: {agent_mode})")
                             
                             # Support for dynamic hardware stream registration
                             stream_url = handshake.get("stream_url")
@@ -61,7 +63,8 @@ class AgentWebSocketServer:
                                     asyncio.create_task(self.hw_worker.add_agent({
                                         "id": agent_id,
                                         "url": stream_url,
-                                        "type": "VIDEO"
+                                        "type": "VIDEO",
+                                        "agent_type": "HARDWARE" # Explicitly mark as hardware if relaying
                                     }))
                                 else:
                                     logger.error(f"[ERROR] HardwareIngestionWorker missing 'add_agent' method. Type: {type(self.hw_worker)}")
@@ -71,9 +74,16 @@ class AgentWebSocketServer:
                                 self.metrics_store.agent_stats[agent_id] = {
                                     "agent_id": agent_id,
                                     "mode": agent_mode,
+                                    "agent_type": agent_type,
                                     "device_info": handshake.get("device_info", {}),
                                     "stream_url": stream_url
                                 }
+                            else:
+                                # Update existing stats
+                                self.metrics_store.agent_stats[agent_id].update({
+                                    "agent_type": agent_type,
+                                    "mode": agent_mode
+                                })
                             continue
                     except json.JSONDecodeError:
                         # Fallback to simple string ID for legacy clients
@@ -165,14 +175,17 @@ class AgentWebSocketServer:
                                 "height": stats["video_height"]
                             }))
                         else:
-                            # Standard update for JPEGs
-                            stats["latest_video"] = base64.b64encode(payload).decode('utf-8')
+                            # Standard update for JPEGs - Broadcast full frame for zero-latency dashboard
+                            b64_frame = base64.b64encode(payload).decode('utf-8')
+                            stats["latest_video"] = b64_frame
                             stats["_video_mime"] = "image/jpeg"
+                            
                             from nisha_master.interfaces.dashboard import ws_manager
                             asyncio.create_task(ws_manager.broadcast({
-                                "type": "MEDIA_UPDATE",
+                                "type": "LIVE_FRAME",
                                 "agent_id": agent_id,
-                                "media_type": "video"
+                                "base64": b64_frame,
+                                "mime": "image/jpeg"
                             }))
                         print(f"[DEBUG] Received VIDEO CLIP from {agent_id}: {len(payload)} bytes")
                     
@@ -238,8 +251,9 @@ class AgentWebSocketServer:
                                 meta = json.loads(meta_bytes.decode('utf-8'))
                             except: pass
                         
-                        # Add agent_id to metadata for backend identification
+                        # Add agent_id and agent_type to metadata for backend identification
                         meta["agent_id"] = agent_id
+                        meta["agent_type"] = agent_type
                         new_meta_bytes = json.dumps(meta).encode('utf-8')
                         new_meta_len = len(new_meta_bytes)
                         
@@ -251,11 +265,17 @@ class AgentWebSocketServer:
                         payload = view[HEADER_SIZE + meta_len : HEADER_SIZE + meta_len + payload_len]
                         full_frame = header_packed + new_meta_bytes + bytes(payload)
                         
-                        await self.stream_queue.put(full_frame)
+                        try:
+                            await self.stream_queue.put(full_frame)
+                        except asyncio.QueueFull:
+                            # Silently drop if queue is full to prevent blocking the worker
+                            pass
                     except Exception as re:
                         print(f"[DEBUG] Relay injection error: {re}")
                         # Fallback to original message if injection fails
-                        await self.stream_queue.put(message)
+                        try:
+                            await self.stream_queue.put(message)
+                        except: pass
 
                 except Exception as e:
                     print(f"[DEBUG] Relay error: {e}")
