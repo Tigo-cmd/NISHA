@@ -35,6 +35,19 @@ export default function AgentDetailPage() {
     const agentEvents = securityEvents.filter((e) => e.agentId === id).slice(0, 5);
 
     const [emergencyLoading, setEmergencyLoading] = React.useState(false);
+    const [liveFrame, setLiveFrame] = React.useState<string | null>(null);
+
+    React.useEffect(() => {
+        const { websocketService } = require("@/services/websocketService");
+        const { WebSocketMessageType } = require("@/types");
+        
+        const unsub = websocketService.subscribe(WebSocketMessageType.LIVE_FRAME, (data: any) => {
+            if (data && data.agent_id === id && data.frame) {
+                setLiveFrame(`data:image/jpeg;base64,${data.frame}`);
+            }
+        });
+        return () => unsub();
+    }, [id]);
 
     const handleEmergencyProtocol = async () => {
         try {
@@ -110,11 +123,28 @@ export default function AgentDetailPage() {
                             <Activity size={16} className="text-foreground" />
                             <h3 className="text-foreground font-display text-sm uppercase tracking-widest">Live Visual Surveillance</h3>
                         </div>
-                        <AgoraVideoPlayer 
-                            channelName={`nisha_stream_${id}`} 
-                            agentId={id} 
-                            masterUrl={masterUrl}
-                        />
+                        {displayAgent.agentType === "MOBILE" ? (
+                            <AgoraVideoPlayer 
+                                channelName={`nisha_stream_${id}`} 
+                                agentId={id} 
+                                masterUrl={masterUrl}
+                            />
+                        ) : liveFrame ? (
+                            <div className="relative w-full aspect-video rounded-lg overflow-hidden">
+                                <img src={liveFrame} alt="Live Relay" className="w-full h-full object-contain" />
+                                <div className="absolute top-4 left-4 flex items-center gap-2">
+                                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                                    <span className="text-[10px] font-mono text-white uppercase tracking-widest bg-black/50 px-2 py-1 rounded">
+                                        LIVE · RELAY
+                                    </span>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="w-full aspect-video bg-black/50 flex flex-col items-center justify-center text-muted-foreground animate-pulse rounded-lg border border-foreground/10">
+                                <Clock size={32} className="mb-2 opacity-20" />
+                                <p className="text-[10px] font-mono uppercase tracking-widest">Awaiting WebSocket Stream...</p>
+                            </div>
+                        )}
                     </div>
 
                     <div className="bg-surface/70 p-6 rounded-lg border border-foreground/5">
