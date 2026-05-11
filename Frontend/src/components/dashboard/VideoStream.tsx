@@ -4,7 +4,7 @@ import React, { useRef, useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/Badge';
-import { Play, Pause, AlertTriangle, Camera, Layers } from 'lucide-react';
+import { Play, Pause, AlertTriangle, Camera, Layers, Clock } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import { apiService } from '@/services/apiService';
 import { websocketService } from '@/services/websocketService';
@@ -34,7 +34,12 @@ export const VideoStream: React.FC<VideoStreamProps> = ({
   const [isStreaming, setIsStreaming] = useState(false);
   const [currentClip, setCurrentClip] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<VideoAnalysis | null>(null);
+  const [liveFrame, setLiveFrame] = useState<string | null>(null);
   const imageRef = useRef<HTMLImageElement>(null);
+
+  const { agents, masters } = useStore();
+  const agent = agents.find(a => a.id === nodeId);
+  const isMobile = agent?.agentType === 'MOBILE';
 
   // Update image directly from WebSocket events
   useEffect(() => {
@@ -69,6 +74,18 @@ export const VideoStream: React.FC<VideoStreamProps> = ({
     return () => unsub();
   }, [isStreaming, nodeId]);
 
+  // Handle live frame relay for hardware agents
+  useEffect(() => {
+    if (!isStreaming || isMobile) return;
+    
+    const unsub = websocketService.subscribe(WebSocketMessageType.LIVE_FRAME, (data: any) => {
+      if (data && data.agent_id === nodeId && data.frame) {
+        setLiveFrame(`data:image/jpeg;base64,${data.frame}`);
+      }
+    });
+    return () => unsub();
+  }, [isStreaming, nodeId, isMobile]);
+
   const startStream = async () => {
     try {
       await apiService.sendAgentCommand(nodeId, "START_STREAM");
@@ -89,7 +106,6 @@ export const VideoStream: React.FC<VideoStreamProps> = ({
     setCurrentClip(null);
   };
 
-  const { masters } = useStore();
   const master = masters.find(m => nodeId.startsWith(m.id) || m.id === 'm01');
   const masterUrl = master?.ip ? (master.ip.startsWith('http') ? master.ip : `https://${master.ip}`) : undefined;
 
@@ -122,11 +138,20 @@ export const VideoStream: React.FC<VideoStreamProps> = ({
       <CardContent className="p-4 space-y-4">
         <div className="relative aspect-video bg-black rounded-lg overflow-hidden border border-foreground/10 flex items-center justify-center shadow-inner">
           {isStreaming ? (
-            <AgoraVideoPlayer 
-                channelName={`nisha_stream_${nodeId}`} 
-                agentId={nodeId} 
-                masterUrl={masterUrl}
-            />
+            isMobile ? (
+              <AgoraVideoPlayer 
+                  channelName={`nisha_stream_${nodeId}`} 
+                  agentId={nodeId} 
+                  masterUrl={masterUrl}
+              />
+            ) : liveFrame ? (
+              <img src={liveFrame} alt="Live Relay" className="w-full h-full object-contain" />
+            ) : (
+              <div className="text-center text-muted-foreground animate-pulse">
+                <Clock className="w-6 h-6 mx-auto mb-2 opacity-20" />
+                <p className="text-[10px] font-mono uppercase tracking-widest">Awaiting WebSocket...</p>
+              </div>
+            )
           ) : (
             <div className="text-center text-muted-foreground">
               <Camera className="w-8 h-8 mx-auto mb-2 opacity-20" />
