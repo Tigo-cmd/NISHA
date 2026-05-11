@@ -14,8 +14,8 @@
 // =====================================================
 // WIFI CONFIG
 // =====================================================
-const char* ssid = "CLICKNETWORKS";
-const char* password = "hotguy112345";
+const char* ssid = "NISHA_CES";
+const char* password = "CES@2470";
 
 // =====================================================
 // BACKEND CONFIG
