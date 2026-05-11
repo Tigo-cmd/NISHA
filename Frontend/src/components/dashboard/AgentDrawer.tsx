@@ -25,6 +25,8 @@ import {
 import { WaveformVisualizer } from "./WaveformVisualizer";
 import dynamic from 'next/dynamic';
 import type { Agent } from "@/types";
+import { WebSocketMessageType } from "@/types";
+import { websocketService } from "@/services/websocketService";
 
 const AgoraVideoPlayer = dynamic(() => import("./AgoraVideoPlayer").then(mod => mod.AgoraVideoPlayer), {
     ssr: false,
@@ -250,8 +252,25 @@ function VideoTab({ agent, masterUrl }: { agent: Agent, masterUrl?: string }) {
     const [isStreaming, setIsStreaming] = useState(false);
     const [streamLoading, setStreamLoading] = useState(false);
     const [latestVideo, setLatestVideo] = useState<string | null>(null);
+    const [liveFrame, setLiveFrame] = useState<string | null>(null);
 
     useEffect(() => {
+        // Subscribe to real-time binary frames relayed via Backend WebSocket
+        console.log(`[VideoTab] Subscribing to live frames for ${agent.id}`);
+        const unsubLiveFrame = websocketService.subscribe(WebSocketMessageType.LIVE_FRAME, (data: any) => {
+            if (data && data.agent_id === agent.id && data.frame) {
+                // If it's a mobile agent, we might still receive frames for AI, 
+                // but we only set liveFrame if it's explicitly identified as the primary source 
+                // or if it's a hardware agent.
+                const isHardware = agent.agentType === 'HARDWARE' || data.agent_type === 'HARDWARE';
+                
+                if (isHardware || !agent.agentType || agent.agentType === 'LEGACY') {
+                    setLiveFrame(`data:image/jpeg;base64,${data.frame}`);
+                    if (!isStreaming) setIsStreaming(true);
+                }
+            }
+        });
+
         let videoUrl: string | null = null;
         const fetchVideo = async () => {
             try {
@@ -275,11 +294,13 @@ function VideoTab({ agent, masterUrl }: { agent: Agent, masterUrl?: string }) {
 
         fetchVideo();
         const interval = setInterval(fetchVideo, 10000); // Poll every 10s
+        
         return () => {
+            unsubLiveFrame();
             clearInterval(interval);
             if (videoUrl) URL.revokeObjectURL(videoUrl);
         };
-    }, [agent.id]);
+    }, [agent.id, isStreaming]);
 
     if (!agent.capabilities.includes("video")) {
         return <div className="text-center py-12 text-muted-foreground text-sm">This agent does not have video capability.</div>;
@@ -288,6 +309,7 @@ function VideoTab({ agent, masterUrl }: { agent: Agent, masterUrl?: string }) {
     const handleStartStream = async () => {
         if (isStreaming) {
             setIsStreaming(false);
+            setLiveFrame(null);
             return;
         }
         
@@ -306,6 +328,23 @@ function VideoTab({ agent, masterUrl }: { agent: Agent, masterUrl?: string }) {
         <div className="space-y-4">
             <div className="aspect-video bg-black rounded-lg overflow-hidden flex items-center justify-center border border-foreground/5 relative">
                 {isStreaming ? (
+                    // Priority 1: Live Frame from WebSocket (Best for Hardware Agents)
+                    liveFrame ? (
+                        <div className="relative w-full h-full">
+                            <img 
+                                src={liveFrame} 
+                                alt="Live Relay" 
+                                className="w-full h-full object-contain"
+                            />
+                            <div className="absolute top-4 left-4 flex items-center gap-2">
+                                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                                <span className="text-[10px] font-mono text-white uppercase tracking-widest bg-black/50 px-2 py-1 rounded">
+                                    LIVE · RELAY
+                                </span>
+                            </div>
+                        </div>
+                    ) : 
+                    // Priority 2: Direct MJPEG Stream (Secondary for Hardware Agents)
                     agent.streamUrl ? (
                         <div className="relative w-full h-full group/stream">
                              <img 
@@ -324,12 +363,19 @@ function VideoTab({ agent, masterUrl }: { agent: Agent, masterUrl?: string }) {
                                 </span>
                             </div>
                         </div>
-                    ) : (
+                    ) : 
+                    // Priority 3: Agora (ONLY for Mobile Agents)
+                    agent.agentType === "MOBILE" ? (
                         <AgoraVideoPlayer 
                             channelName={`nisha_stream_${agent.id}`} 
                             agentId={agent.id} 
                             masterUrl={masterUrl}
                         />
+                    ) : (
+                        <div className="text-center text-muted-foreground animate-pulse">
+                            <Clock size={32} className="mx-auto mb-2 opacity-30" />
+                            <p className="text-xs font-mono uppercase">Awaiting Stream...</p>
+                        </div>
                     )
                 ) : (
                     <div className="text-center text-muted-foreground">
