@@ -18,13 +18,26 @@ class SqlVideoRepository(VideoRepository):
 
     def _to_domain(self, model: VideoEventModel) -> VideoEvent:
         kp_data = model.keypoints or {}
+        
+        # Safe Enum Instantiation with case-insensitivity and fallbacks
+        try:
+            priority = VideoPriority(str(model.priority).lower())
+        except (ValueError, TypeError):
+            priority = VideoPriority.LOW
+
+        try:
+            behavior_val = str(model.behavior).lower() if model.behavior else "normal"
+            behavior = BehaviorClass(behavior_val)
+        except (ValueError, TypeError):
+            behavior = BehaviorClass.NORMAL
+
         return VideoEvent(
             event_id=model.id,
             agent_id=model.agent_id,
             timestamp=model.timestamp,
-            priority=VideoPriority(model.priority),
+            priority=priority,
             detection=VideoDetection(
-                behavior=BehaviorClass(model.behavior),
+                behavior=behavior,
                 confidence=float(model.confidence),
                 model_version=model.model_version or "",
                 keypoints=PoseKeypoints(
