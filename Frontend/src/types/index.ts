@@ -18,6 +18,7 @@ export interface Agent {
   audioLevel?: number;
   motionDetected?: boolean;
   streamUrl?: string;
+  agentType?: "MOBILE" | "HARDWARE" | "AI" | "LEGACY";
 }
 
 export interface Master {
@@ -146,6 +147,7 @@ export enum WebSocketMessageType {
   NEW_CLIP = "NEW_CLIP",
   AGENT_STATUS = "AGENT_STATUS",
   MASTER_STATUS = "MASTER_STATUS",
+  LIVE_FRAME = "LIVE_FRAME",
 }
 
 export interface WebSocketMessage<T> {
