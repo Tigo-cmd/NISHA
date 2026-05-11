@@ -14,6 +14,16 @@ let selectedAgentId = null;
 let lastVideoUpdate = 0;
 let lastAudioUpdate = 0;
 
+function isHardware(id) {
+    if (!id) return false;
+    const cleanId = String(id).trim().toUpperCase();
+    const isMac = /^[0-9A-Fa-f]{12}$/.test(cleanId);
+    const isNode = cleanId.includes("NODE") || cleanId.includes("ESP") || cleanId.includes("CAM");
+    const result = isMac || isNode;
+    console.log(`[Identification] Agent ${cleanId}: isHardware=${result} (isMac=${isMac}, isNode=${isNode})`);
+    return result;
+}
+
 // Queue Managers
 const videoQueue = [];
 const audioQueue = [];
@@ -293,8 +303,12 @@ function selectAgent(id) {
     // Clear queues
     clearQueues();
     
-    // Join Agora channel for this agent
-    agoraManager.join(`nisha_stream_${id}`);
+    // Join Agora channel ONLY for Mobile agents
+    if (!isHardware(id)) {
+        agoraManager.join(`nisha_stream_${id}`);
+    } else {
+        agoraManager.leave();
+    }
     
     updateSidebar();
     
@@ -453,11 +467,23 @@ setInterval(fetchAgents, REFRESH_RATE);
 const ws = new WebSocket(WS_URL);
 ws.onmessage = (event) => {
     const msg = JSON.parse(event.data);
+    // console.log(`[WS] Received: ${msg.type || 'unknown'}`); // Keep commented unless needed to avoid flood
+
     if (msg.type === 'SNAPSHOT') {
         updateDashboard(msg.payload);
     } else if (msg.type === 'MEDIA_UPDATE') {
         if (selectedAgentId === msg.agent_id) {
             fetchMedia(msg.agent_id, msg.media_type);
+        }
+    } else if (msg.type === 'LIVE_FRAME') {
+        if (selectedAgentId === msg.agent_id) {
+            console.log(`[Stream] Received LIVE_FRAME for ${msg.agent_id} (${msg.base64?.length || 0} bytes)`);
+            const mime = msg.mime || 'image/jpeg';
+            videoEl.src = `data:${mime};base64,${msg.base64}`;
+            videoEl.classList.remove('hidden');
+            if (videoCanvas) videoCanvas.classList.add('hidden');
+            if (document.getElementById('remote-video')) document.getElementById('remote-video').classList.add('hidden');
+            badgeClips.innerText = `HYPER-LIVE`;
         }
     } else if (msg.type === 'VIDEO_FRAME') {
         if (selectedAgentId === msg.agent_id) {
