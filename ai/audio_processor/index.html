@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Realtime Whisper Transcription</title>
+
+  <style>
+    body{
+      margin:0;
+      padding:0;
+      font-family:Arial;
+      background:#f4f4f4;
+      display:flex;
+      justify-content:center;
+      align-items:center;
+      min-height:100vh;
+    }
+
+    .container{
+      width:90%;
+      max-width:700px;
+      background:white;
+      padding:30px;
+      border-radius:20px;
+      box-shadow:0 10px 30px rgba(0,0,0,0.1);
+    }
+
+    h1{
+      text-align:center;
+    }
+
+    .buttons{
+      display:flex;
+      gap:15px;
+      justify-content:center;
+      margin:20px 0;
+    }
+
+    button{
+      padding:14px 24px;
+      border:none;
+      border-radius:12px;
+      color:white;
+      cursor:pointer;
+      font-size:16px;
+    }
+
+    .start{
+      background:green;
+    }
+
+    .stop{
+      background:red;
+    }
+
+    .transcript-box{
+      background:#fafafa;
+      border:1px solid #ddd;
+      border-radius:12px;
+      padding:20px;
+      min-height:150px;
+      white-space:pre-wrap;
+      line-height:1.5;
+    }
+
+    .status{
+      text-align:center;
+      font-weight:bold;
+      margin-bottom:15px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+  <h1>Realtime Whisper Transcription</h1>
+
+  <div class="status" id="status">Idle</div>
+
+  <div class="buttons">
+    <button class="start" onclick="startRecording()">
+      Start
+    </button>
+
+    <button class="stop" onclick="stopRecording()">
+      Stop
+    </button>
+  </div>
+
+  <div class="transcript-box" id="transcript">
+    Waiting for transcription...
+  </div>
+
+</div>
+
+<script>
+
+let ws;
+let audioContext;
+let processor;
+let input;
+let stream;
+
+async function startRecording() {
+
+  ws = new WebSocket("ws://localhost:8000/ws/audio");
+
+  ws.binaryType = "arraybuffer";
+
+  ws.onopen = async () => {
+
+    document.getElementById("status").innerText = "LIVE 🔴";
+
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: true
+    });
+
+    audioContext = new AudioContext({
+      sampleRate: 16000
+    });
+
+    input = audioContext.createMediaStreamSource(stream);
+
+    processor = audioContext.createScriptProcessor(
+      4096,
+      1,
+      1
+    );
+
+    input.connect(processor);
+
+    processor.connect(audioContext.destination);
+
+    processor.onaudioprocess = (e) => {
+
+      const channelData =
+        e.inputBuffer.getChannelData(0);
+
+      const pcmData =
+        convertFloat32ToInt16(channelData);
+
+      if (ws.readyState === 1) {
+        ws.send(pcmData);
+      }
+    };
+  };
+
+  ws.onmessage = (event) => {
+
+    const data = JSON.parse(event.data);
+
+    document.getElementById("transcript").innerText =
+      "📝 " + data.text +
+      "\n\n🌍 Language: " + data.language +
+      "\n🔥 Gunshot: " +
+      (data.gunshot ? "YES 🚨" : "No");
+  };
+
+  ws.onerror = (err) => {
+    console.error(err);
+  };
+
+  ws.onclose = () => {
+    console.log("socket closed");
+  };
+}
+
+function stopRecording() {
+
+  if(processor) processor.disconnect();
+
+  if(input) input.disconnect();
+
+  if(audioContext) audioContext.close();
+
+  if(stream){
+    stream.getTracks().forEach(track => track.stop());
+  }
+
+  if(ws){
+    ws.close();
+  }
+
+  document.getElementById("status").innerText =
+    "Stopped";
+}
+
+function convertFloat32ToInt16(buffer) {
+
+  let l = buffer.length;
+
+  const buf = new Int16Array(l);
+
+  while(l--) {
+
+    buf[l] = Math.min(
+      1,
+      buffer[l]
+    ) * 0x7FFF;
+  }
+
+  return buf.buffer;
+}
+
+</script>
+
+</body>
+</html>

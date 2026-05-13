@@ -3,7 +3,12 @@ from pydantic import Field
 
 
 class Settings(BaseSettings):
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "case_sensitive": False}
+    model_config = {
+        "env_file": ".env", 
+        "env_file_encoding": "utf-8", 
+        "case_sensitive": False,
+        "extra": "ignore"
+    }
 
     # Application
     app_name: str = "NISHA_SENTINEL"
@@ -11,6 +16,7 @@ class Settings(BaseSettings):
     debug: bool = True
     log_level: str = "INFO"
     secret_key: str = "change-me-to-a-random-secret-key"
+    nisha_network_mode: str = "LOCAL"
 
     # Server
     server_host: str = "0.0.0.0"

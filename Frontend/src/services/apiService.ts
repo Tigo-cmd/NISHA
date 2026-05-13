@@ -12,11 +12,14 @@ import {
 } from '@/types';
 
 // Mock toast for now
+import { config } from '@/lib/networkConfig';
+
+// Mock toast for now
 const toast = (props: any) => console.log('Toast:', props);
 
 // Base URL for API calls
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.buildwave.pro';
-const AGORA_TOKEN_URL = 'https://m01.buildwave.pro/api/agora/token';
+const API_BASE_URL = config.backend.http;
+const AGORA_TOKEN_URL = `${config.master.http}/api/agora/token`;
 const API_KEY = process.env.NEXT_PUBLIC_API_KEY || 'nisha_master_key_2024_secure';
 
 // Helper for authenticated fetch

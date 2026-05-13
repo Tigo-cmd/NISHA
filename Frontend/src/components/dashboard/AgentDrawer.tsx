@@ -151,9 +151,21 @@ function AudioTab({ agent }: { agent: Agent }) {
     const { securityEvents } = useStore();
     const agentEvents = securityEvents.filter(e => e.agentId === agent.id);
     const [latestAudio, setLatestAudio] = useState<string | null>(null);
+    const [transcriptions, setTranscriptions] = useState<{ text: string; language: string; timestamp: number }[]>([]);
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
+        // Subscribe to live transcriptions
+        const unsubTranscription = websocketService.subscribe(WebSocketMessageType.TRANSCRIPTION_EVENT, (data: any) => {
+            if (data && data.agent_id === agent.id) {
+                setTranscriptions(prev => [{
+                    text: data.text,
+                    language: data.language,
+                    timestamp: data.timestamp
+                }, ...prev].slice(0, 5)); // Keep last 5
+            }
+        });
+
         let audioUrl: string | null = null;
         const fetchAudio = async () => {
             try {
@@ -181,6 +193,7 @@ function AudioTab({ agent }: { agent: Agent }) {
         fetchAudio();
         const interval = setInterval(fetchAudio, 10000); // Poll every 10s to match recording loop
         return () => {
+            unsubTranscription();
             clearInterval(interval);
             if (audioUrl) URL.revokeObjectURL(audioUrl);
         };
@@ -225,22 +238,26 @@ function AudioTab({ agent }: { agent: Agent }) {
             </div>
 
             <div>
-                <span className="text-xs font-mono text-muted-foreground uppercase">AI Signal Analysis</span>
-                <div className="mt-2 bg-foreground/5 rounded-lg p-3 border border-foreground/5 min-h-[64px] flex items-center justify-center">
-                    {agentEvents.filter(e => e.type === "Audio Trigger").length > 0 ? (
-                        <div className="w-full">
-                            <div className="flex justify-between items-center mb-2">
-                                <span className="text-[10px] font-mono text-emerald-500 uppercase">Signature Match</span>
-                                <span className="text-[10px] font-mono text-muted-foreground">{agentEvents.filter(e => e.type === "Audio Trigger")[0].timestamp.split(', ')[1]}</span>
+                <span className="text-xs font-mono text-muted-foreground uppercase">Live Transcription</span>
+                <div className="mt-2 space-y-2 max-h-[160px] overflow-y-auto pr-1">
+                    {transcriptions.length > 0 ? (
+                        transcriptions.map((t, i) => (
+                            <div key={i} className="bg-foreground/5 rounded-lg p-3 border border-foreground/5 animate-in fade-in slide-in-from-top-1">
+                                <div className="flex justify-between items-center mb-1">
+                                    <span className="text-[10px] font-mono text-emerald-500 uppercase">{t.language || "Unknown"}</span>
+                                    <span className="text-[10px] font-mono text-muted-foreground">{new Date(t.timestamp * 1000).toLocaleTimeString()}</span>
+                                </div>
+                                <p className="text-xs text-foreground font-medium">
+                                    "{t.text}"
+                                </p>
                             </div>
-                            <p className="text-xs text-foreground italic">
-                                {agentEvents.filter(e => e.type === "Audio Trigger")[0].description}
-                            </p>
-                        </div>
+                        ))
                     ) : (
-                        <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest text-center">
-                            Awaiting Acoustic Signature...
-                        </span>
+                        <div className="bg-foreground/5 rounded-lg p-3 border border-foreground/5 min-h-[64px] flex items-center justify-center">
+                            <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest text-center">
+                                Awaiting speech...
+                            </span>
+                        </div>
                     )}
                 </div>
             </div>

@@ -148,6 +148,7 @@ export enum WebSocketMessageType {
   AGENT_STATUS = "AGENT_STATUS",
   MASTER_STATUS = "MASTER_STATUS",
   LIVE_FRAME = "LIVE_FRAME",
+  TRANSCRIPTION_EVENT = "TRANSCRIPTION_EVENT",
 }
 
 export interface WebSocketMessage<T> {

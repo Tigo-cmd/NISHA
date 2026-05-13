@@ -74,9 +74,9 @@ class AudioClassifier:
                 return "Scream", 0.92, "High intensity sound detected: Possible DISTRESS"
             
             # 2. Medium intensity with specific variance -> Speech
-            # Speech has high variance in amplitude
+            # Speech has high variance in amplitude - lowered thresholds for sensitivity
             variance = np.var(samples) / (rms**2 + 1)
-            if 0.02 < intensity < 0.12 and variance > 0.4:
+            if 0.005 < intensity < 0.2 and variance > 0.15:
                 return "VoicePattern", 0.88, "Voice activity detected in sector"
                 
             # 3. Default -> Ambient

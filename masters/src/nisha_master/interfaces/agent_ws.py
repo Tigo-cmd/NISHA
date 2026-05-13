@@ -4,7 +4,22 @@ import logging
 import time
 import base64
 import json
+import httpx
+import sys
+from pathlib import Path
 from typing import Dict, Any
+
+# Path hack to import AI modules from the parent project structure
+project_root = Path(__file__).resolve().parent.parent.parent.parent.parent
+if str(project_root) not in sys.path:
+    sys.path.append(str(project_root))
+
+from nisha_master.core.audio_buffer import AudioBuffer
+try:
+    from ai.audio_processor.processor import AudioClassifier
+except ImportError:
+    # Fallback if pathing fails in some environments
+    AudioClassifier = None
 
 import json
 from websockets.asyncio.server import serve, ServerConnection
@@ -34,6 +49,19 @@ class AgentWebSocketServer:
         self.hw_worker = hw_worker
         self.active_agents: Dict[str, ServerConnection] = {}
         self.total_inbound_bytes = 0
+        
+        # Audio Transcription state
+        self.audio_buffers: Dict[str, AudioBuffer] = {}
+        self.audio_classifier = AudioClassifier() if AudioClassifier else None
+        
+        # Pull AI service URLs from centralized config
+        from nisha_master.config import settings
+        self.ai_service_url = f"http://{settings.backend_host}:8083/api/v1/transcribe"
+        self.ai_stream_url = f"ws://{settings.backend_host}:8083/api/v1/stream"
+        
+        self.ai_connections: Dict[str, Any] = {} # Persistent streams
+        self.ai_pending: set[str] = set() # Track connecting state
+        self.http_client = httpx.AsyncClient(timeout=10.0)
 
     async def handle_client(self, websocket: ServerConnection):
         """Main handler for a connected agent."""
@@ -189,47 +217,46 @@ class AgentWebSocketServer:
                             }))
                         print(f"[DEBUG] Received VIDEO CLIP from {agent_id}: {len(payload)} bytes")
                     
-                    elif stream_type == 0x03: # AUDIO (10s/30s clip)
+                    elif stream_type == 0x03: # AUDIO
                         payload = bytes(view[HEADER_SIZE + meta_len : HEADER_SIZE + meta_len + payload_len])
                         
-                        # Parse metadata to check if this is already encoded audio (e.g. AAC)
                         frame_meta = {}
                         if meta_len > 0:
                             try:
                                 frame_meta = json.loads(bytes(view[HEADER_SIZE : HEADER_SIZE + meta_len]).decode('utf-8'))
                             except: pass
                         
+                        # 1. Basic VAD and Local Dashboard Stats
+                        has_speech = False
+                        if self.audio_classifier and frame_meta.get('format') != 'aac':
+                            classification, confidence, _ = self.audio_classifier.process_audio(payload)
+                            has_speech = classification == "VoicePattern"
+                            if has_speech:
+                                stats["is_speaking"] = True
+                                stats["speech_confidence"] = confidence
+                            else:
+                                stats["is_speaking"] = False
+
+                            # 2. Real-time Streaming Logic
+                            if agent_id not in self.ai_connections and agent_id not in self.ai_pending:
+                                self.ai_pending.add(agent_id)
+                                asyncio.create_task(self._init_ai_stream(agent_id))
+                            
+                            # Send raw audio immediately to the AI Brain
+                            await self._stream_to_ai(agent_id, payload)
+
+                        # 3. Legacy Dashboard Updates
                         if frame_meta.get('format') == 'aac':
-                            # Already encoded as AAC/M4A, just store it
                             stats["latest_audio"] = base64.b64encode(payload).decode('utf-8')
                             stats["_audio_mime"] = "audio/m4a"
-                        elif frame_meta.get('format') == 'pcm_s16le':
-                            # Raw PCM Stream chunk (Low Latency)
+                        else:
+                            # Pulse data for dashboard
                             stats["latest_audio"] = base64.b64encode(payload).decode('utf-8')
                             stats["_audio_mime"] = "audio/pcm"
                             stats["is_live_audio"] = True
-                        else:
-                            # Wrap Raw PCM in a WAV Header for Dashboard Playback
-                            # (16kHz, 16-bit, Mono)
-                            sample_rate = 16000
-                            bits_per_sample = 16
-                            channels = 1
-                            data_size = len(payload)
-                            byte_rate = sample_rate * channels * bits_per_sample // 8
-                            block_align = channels * bits_per_sample // 8
-                            
-                            wav_header = struct.pack(
-                                '<4sI4s4sIHHIIHH4sI',
-                                b'RIFF', 36 + data_size, b'WAVE', b'fmt ', 16, 1, channels,
-                                sample_rate, byte_rate, block_align, bits_per_sample, b'data', data_size
-                            )
-                            stats["latest_audio"] = base64.b64encode(wav_header + payload).decode('utf-8')
-                            stats["_audio_mime"] = "audio/wav"
-                            stats["is_live_audio"] = False
                             
                         stats["audio_updated_at"] = time.time()
-                        stats["stream_type"] = "AUDIO CLIP"
-                        print(f"[DEBUG] Received AUDIO CLIP from {agent_id}: {len(payload)} bytes")
+                        print(f"[DEBUG] Received AUDIO from {agent_id}: {len(payload)} bytes (Speech: {has_speech})")
 
                     elif stream_type == 0x04: # LOCATION
                         payload = bytes(view[HEADER_SIZE + meta_len : HEADER_SIZE + meta_len + payload_len])
@@ -298,6 +325,72 @@ class AgentWebSocketServer:
             except Exception as e:
                 print(f"[DEBUG] Failed to send command to {agent_id}: {e}")
         return False
+
+    async def _init_ai_stream(self, agent_id: str):
+        """Opens a persistent live pipe to the AI Service on the laptop."""
+        import websockets
+        uri = f"{self.ai_stream_url}/{agent_id}"
+        
+        while True:
+            try:
+                async with websockets.connect(uri) as ws:
+                    self.ai_connections[agent_id] = ws
+                    self.ai_pending.discard(agent_id)
+                    logger.info(f"[AI] Persistent stream established for {agent_id}")
+                    
+                    async for message in ws:
+                        data = json.loads(message)
+                        if data.get("type") == "PARTIAL_TRANSCRIPT":
+                            text = data["text"]
+                            # Update local stats for the diagnostic box
+                            if self.metrics_store and agent_id in self.metrics_store.agent_stats:
+                                self.metrics_store.agent_stats[agent_id]["last_transcription"] = text
+                            
+                            # Wrap in binary frame so Backend recognizes it
+                            await self._relay_transcription_as_lite(agent_id, text, data.get("language", "en"))
+                
+            except Exception as e:
+                logger.warning(f"[AI] Stream error for {agent_id}: {e}. Reconnecting...")
+                self.ai_connections.pop(agent_id, None)
+                await asyncio.sleep(3)
+
+    async def _stream_to_ai(self, agent_id: str, audio_data: bytes):
+        """Pushes raw audio bytes into the active AI stream."""
+        ws = self.ai_connections.get(agent_id)
+        if ws:
+            try:
+                await ws.send(audio_data)
+            except:
+                self.ai_connections.pop(agent_id, None)
+
+    async def _relay_transcription_as_lite(self, agent_id: str, text: str, language: str):
+        """Encapsulate transcription in a NISHA LITE frame and send to Backend."""
+        payload = json.dumps({
+            "type": "TRANSCRIPTION",
+            "text": text,
+            "language": language,
+            "timestamp": time.time()
+        }).encode('utf-8')
+        
+        # Header: magic(2s), ver(B), type(B), prio(B), res(B), seq(I), ts(Q), payload_len(I), meta_len(H)
+        # stream_type 0x01 = LITE
+        header = struct.pack(
+            FRAME_HEADER_FORMAT,
+            b"NI", 0x01, 0x01, 0x01, 0x00, 0, int(time.time()*1000), len(payload), 0
+        )
+        
+        # Meta with agent_id for the relay logic
+        meta = {"agent_id": agent_id, "agent_type": "HARDWARE"}
+        meta_bytes = json.dumps(meta).encode('utf-8')
+        
+        # Re-pack with meta_len
+        header = struct.pack(
+            FRAME_HEADER_FORMAT,
+            b"NI", 0x01, 0x01, 0x01, 0x00, 0, int(time.time()*1000), len(payload), len(meta_bytes)
+        )
+        
+        full_frame = header + meta_bytes + payload
+        await self.stream_queue.put(full_frame)
 
     async def _handle_control_message(self, agent_id: str, message: str):
         pass

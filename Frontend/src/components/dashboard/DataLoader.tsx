@@ -5,6 +5,7 @@ import { useStore } from "@/store/useStore";
 import { apiService } from "@/services/apiService";
 import { websocketService } from "@/services/websocketService";
 import { WebSocketMessageType, Agent as StoreAgent, Master as StoreMaster } from "@/types";
+import { config } from "@/lib/networkConfig";
 
 // Maps backend Agent model to frontend StoreAgent model
 const mapBackendAgent = (backendAgent: any): StoreAgent => {
@@ -195,8 +196,8 @@ export function DataLoader() {
     pollInterval.current = setInterval(fetchData, 30000);
 
     // WebSocket Connection
-    let WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8080/api/v1/ws/realtime";
-    if (!process.env.NEXT_PUBLIC_WS_URL && !WS_URL.includes('token=')) {
+    let WS_URL = config.backend.ws;
+    if (!WS_URL.includes('token=')) {
       WS_URL += "?token=NISHA-FRONTEND-DEV";
     }
     websocketService.connect(WS_URL);
@@ -238,25 +239,9 @@ export function DataLoader() {
     const unsubAlert = websocketService.subscribe(WebSocketMessageType.THRESHOLD_ALERT, (data: any) => {
       // API_INTEGRATION_GUIDE.md: "Payload: Alert ID, severity (critical/high), description, timestamp, agent ID."
       if (data) {
-        addAlert({
-          id: data.alert_id || Date.now().toString(),
-          type: (data.event_type || data.type || "SYSTEM") as any,
-          severity: data.severity || "medium",
-          description: data.description || "Security Event Detected",
-          timestamp: data.timestamp ? new Date(data.timestamp).toLocaleString() : new Date().toLocaleString(),
-          agentId: data.agent_id || "Unknown",
-          acknowledged: false
-        });
+        // addAlert silenced per request
 
-        addSecurityEvent({
-          id: data.alert_id || Date.now().toString(),
-          type: "System Anomaly",
-          severity: data.severity || "medium",
-          description: data.description || "Security Event Detected",
-          timestamp: data.timestamp ? new Date(data.timestamp).toLocaleString() : new Date().toLocaleString(),
-          zone: "Unknown",
-          agentId: data.agent_id || "Unknown"
-        });
+        // addSecurityEvent silenced per request
 
         if (data.severity === 'critical') setThreatLevel('critical');
         else if (data.severity === 'high' && useStore.getState().threatLevel !== 'critical') setThreatLevel('high');

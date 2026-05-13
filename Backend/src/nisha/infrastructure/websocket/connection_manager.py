@@ -223,7 +223,27 @@ class ConnectionManager:
                     telemetry["gps_lat"] = lat
                     telemetry["gps_lng"] = lng
                     
+                # Real-time Audio Relay for "Listen Live"
+                if frame.stream_type == 0x03:
+                    asyncio.create_task(self.broadcast({
+                        "type": "AUDIO_FRAME",
+                        "agent_id": agent_id,
+                        "timestamp": time.time(),
+                        "audio": base64.b64encode(frame.payload).decode('utf-8')
+                    }))
+
                 asyncio.create_task(self.broadcast(telemetry))
+
+                # Handle Transcriptions from Master
+                if frame.stream_type == 0x01 and payload_data.get("type") == "TRANSCRIPTION":
+                    # Broadcast to everyone (Dashboard)
+                    await self.broadcast({
+                        "type": "TRANSCRIPTION_EVENT",
+                        "agent_id": agent_id,
+                        "text": payload_data.get("text"),
+                        "language": payload_data.get("language"),
+                        "timestamp": payload_data.get("timestamp", time.time())
+                    })
                     
         except Exception as e:
             logger.error("Failed to parse binary frame from %s: %s", client_id, e)
