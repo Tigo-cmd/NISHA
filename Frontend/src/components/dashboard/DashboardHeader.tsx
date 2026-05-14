@@ -2,8 +2,10 @@
 
 import React from "react";
 import { Search, Bell, User, Activity } from "lucide-react";
+import { useStore } from "@/store/useStore";
 
 export const DashboardHeader = () => {
+    const { alerts } = useStore();
     return (
         <header className="h-[60px] border-b border-foreground/5 bg-surface/50 backdrop-blur-md flex items-center justify-between px-6 z-20">
             <div className="flex items-center gap-4">
@@ -29,7 +31,9 @@ export const DashboardHeader = () => {
 
                 <button className="relative text-muted-foreground hover:text-foreground transition-colors">
                     <Bell size={20} />
-                    <div className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full border-2 border-surface" />
+                    {alerts.length > 0 && (
+                        <div className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full border-2 border-surface" />
+                    )}
                 </button>
 
                 <button className="flex items-center gap-3 p-1 hover:bg-foreground/5 rounded-md transition-colors group">

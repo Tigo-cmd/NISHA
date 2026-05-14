@@ -70,6 +70,8 @@ export function DataLoader() {
   const addSecurityEvent = useStore((state) => state.addSecurityEvent);
   const setThreatLevel = useStore((state) => state.setThreatLevel);
   const addTelemetryLog = useStore((state) => state.addTelemetryLog);
+  const clearAlerts = useStore((state) => state.clearAlerts);
+  const clearSecurityEvents = useStore((state) => state.clearSecurityEvents);
 
   const pollInterval = useRef<NodeJS.Timeout | undefined>(undefined);
 
@@ -176,12 +178,14 @@ export function DataLoader() {
         });
       }
 
+      /* Alerts Silenced per Request
       if (newAlerts.length > 0) {
         setAlerts([...newAlerts, ...currentAlerts].slice(0, 50));
       }
       if (newSecurityEvents.length > 0) {
         setSecurityEvents([...newSecurityEvents, ...currentSecurityEvents].slice(0, 50));
       }
+      */
 
     } catch (error) {
       console.error("DataLoader error fetching live data:", error);
@@ -191,6 +195,8 @@ export function DataLoader() {
   useEffect(() => {
     // Initial fetch
     fetchData();
+    clearAlerts();
+    clearSecurityEvents();
 
     // Poll every 30 seconds for full sync (fallback for WebSockets)
     pollInterval.current = setInterval(fetchData, 30000);
