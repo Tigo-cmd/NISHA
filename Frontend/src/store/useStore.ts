@@ -35,7 +35,9 @@ interface SystemState {
     setSystemStatus: (status: SystemStatus | null) => void;
     setSecurityEvents: (events: SecurityEvent[]) => void;
     setAlerts: (alerts: Alert[]) => void;
+    clearAlerts: () => void;
     addSecurityEvent: (event: SecurityEvent) => void;
+    clearSecurityEvents: () => void;
     setThreatLevel: (level: "low" | "moderate" | "high" | "critical") => void;
     addTelemetryLog: (log: any) => void;
 }
@@ -68,7 +70,9 @@ export const useStore = create<SystemState>((set) => ({
     })),
 
     setAlerts: (alerts) => set({ alerts }),
+    clearAlerts: () => set({ alerts: [] }),
     setSecurityEvents: (securityEvents) => set({ securityEvents }),
+    clearSecurityEvents: () => set({ securityEvents: [] }),
 
     acknowledgeAlert: (alertId) => set((state) => ({
         alerts: state.alerts.map((alert) =>
