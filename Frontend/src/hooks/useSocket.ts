@@ -29,7 +29,7 @@ export const useSocket = () => {
             setSystemHealth(false);
         });
 
-        // Listen for new audio alerts
+        /* Audio Alerts Silenced per Request
         socket.on("audio_alert", (data) => {
             addAlert({
                 id: data.id,
@@ -41,6 +41,7 @@ export const useSocket = () => {
                 acknowledged: false,
             });
         });
+        */
 
         // Listen for agent status updates
         socket.on("agent_status", (data) => {
