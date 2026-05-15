@@ -422,6 +422,8 @@ function clearQueues() {
     videoEl.src = '';
     audioEl.src = '';
     document.getElementById('audioSection').classList.add('hidden');
+    document.getElementById('transcriptionSection').classList.add('hidden');
+    document.getElementById('transcriptionList').innerHTML = '';
     agoraManager.leave();
 }
 
@@ -488,6 +490,27 @@ ws.onmessage = (event) => {
     } else if (msg.type === 'VIDEO_FRAME') {
         if (selectedAgentId === msg.agent_id) {
             renderRawRGB(msg.base64, msg.width, msg.height);
+        }
+    } else if (msg.type === 'TRANSCRIPTION_EVENT') {
+        if (selectedAgentId === msg.agent_id) {
+            const section = document.getElementById('transcriptionSection');
+            if (section) section.classList.remove('hidden');
+            
+            const list = document.getElementById('transcriptionList');
+            if (list) {
+                const item = document.createElement('div');
+                item.style.marginBottom = "4px";
+                item.style.padding = "8px";
+                item.style.background = "rgba(255,255,255,0.05)";
+                item.style.borderRadius = "6px";
+                item.innerHTML = `<span style="color: #39d353; font-size: 0.7rem; margin-right: 8px; text-transform: uppercase;">[${msg.language || '??'}]</span><span style="color: #fff;">${msg.text}</span>`;
+                list.prepend(item);
+                
+                // Keep only last 5 entries to avoid overflow
+                while (list.children.length > 5) {
+                    list.removeChild(list.lastChild);
+                }
+            }
         }
     } else if (msg.agents) {
         agents = msg.agents;
