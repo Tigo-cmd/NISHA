@@ -150,6 +150,7 @@ export enum WebSocketMessageType {
   LIVE_FRAME = "LIVE_FRAME",
   TRANSCRIPTION_EVENT = "TRANSCRIPTION_EVENT",
   AUDIO_FRAME = "AUDIO_FRAME",
+  AUDIO_ALERT_EVENT = "AUDIO_ALERT_EVENT",
 }
 
 export interface WebSocketMessage<T> {
