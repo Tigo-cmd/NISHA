@@ -22,6 +22,7 @@ interface SystemState {
     securityEvents: SecurityEvent[];
     threatLevel: "low" | "moderate" | "high" | "critical";
     telemetryLogs: any[];
+    activeAudioAlert: any | null;
 
     setAgents: (agents: Agent[]) => void;
     setMasters: (masters: Master[]) => void;
@@ -40,6 +41,7 @@ interface SystemState {
     clearSecurityEvents: () => void;
     setThreatLevel: (level: "low" | "moderate" | "high" | "critical") => void;
     addTelemetryLog: (log: any) => void;
+    setActiveAudioAlert: (alert: any | null) => void;
 }
 
 export const useStore = create<SystemState>((set) => ({
@@ -53,6 +55,7 @@ export const useStore = create<SystemState>((set) => ({
     securityEvents: [],
     threatLevel: "low",
     telemetryLogs: [],
+    activeAudioAlert: null,
 
     setAgents: (agents) => set({ agents }),
     setMasters: (masters) => set({ masters }),
@@ -103,4 +106,5 @@ export const useStore = create<SystemState>((set) => ({
     addTelemetryLog: (log) => set((state) => ({
         telemetryLogs: [log, ...state.telemetryLogs].slice(0, 100),
     })),
+    setActiveAudioAlert: (alert) => set({ activeAudioAlert: alert }),
 }));
