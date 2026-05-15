@@ -28,6 +28,10 @@ export const metadata: Metadata = {
   },
 };
 
+import { Toaster } from 'sonner';
+
+import { AudioAlertOverlay } from "@/components/dashboard/AudioAlertOverlay";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -43,6 +47,15 @@ export default function RootLayout({
         <ThemeProvider>
           <DottedSurface />
           {children}
+          <Toaster 
+            position="top-center" 
+            richColors 
+            closeButton 
+            toastOptions={{
+              style: { padding: '16px', fontSize: '16px' }
+            }}
+          />
+          <AudioAlertOverlay />
         </ThemeProvider>
       </body>
     </html>

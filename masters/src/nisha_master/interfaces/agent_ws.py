@@ -350,6 +350,9 @@ class AgentWebSocketServer:
                             
                             # Wrap in binary frame so Backend recognizes it
                             await self._relay_transcription_as_lite(agent_id, text, data.get("language", "en"))
+                        elif data.get("type") == "AUDIO_ALERT":
+                            # Relay alert to backend
+                            await self._relay_alert_as_lite(agent_id, data)
                 
             except Exception as e:
                 logger.warning(f"[AI] Stream error for {agent_id}: {e}. Reconnecting...")
@@ -403,6 +406,46 @@ class AgentWebSocketServer:
                 "text": text,
                 "language": language,
                 "is_final": True,
+                "timestamp": time.time()
+            }))
+        except:
+            pass
+
+    async def _relay_alert_as_lite(self, agent_id: str, alert_data: dict):
+        """Encapsulate an audio alert in a NISHA LITE frame and send to Backend."""
+        payload = json.dumps({
+            "type": "AUDIO_ALERT",
+            "sound_class": alert_data.get("sound_class"),
+            "confidence": alert_data.get("confidence"),
+            "timestamp": alert_data.get("timestamp", time.time())
+        }).encode('utf-8')
+        
+        # stream_type 0x01 = LITE
+        header = struct.pack(
+            FRAME_HEADER_FORMAT,
+            b"NI", 0x01, 0x01, 0x01, 0x00, 0, int(time.time()*1000), len(payload), 0
+        )
+        
+        meta = {"agent_id": agent_id, "agent_type": "HARDWARE"}
+        meta_bytes = json.dumps(meta).encode('utf-8')
+        
+        # Re-pack with meta_len
+        header = struct.pack(
+            FRAME_HEADER_FORMAT,
+            b"NI", 0x01, 0x01, 0x01, 0x00, 0, int(time.time()*1000), len(payload), len(meta_bytes)
+        )
+        
+        full_frame = header + meta_bytes + payload
+        await self.stream_queue.put(full_frame)
+        
+        # Local Dashboard Broadcast
+        try:
+            from nisha_master.interfaces.dashboard import ws_manager
+            asyncio.create_task(ws_manager.broadcast({
+                "type": "AUDIO_ALERT_EVENT",
+                "agent_id": agent_id,
+                "sound_class": alert_data.get("sound_class"),
+                "confidence": alert_data.get("confidence"),
                 "timestamp": time.time()
             }))
         except:
