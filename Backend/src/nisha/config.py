@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     agora_app_id: str = "8aab67dc71304ae595f064ea51f12082"
     agora_app_certificate: str = "4130348368c94fd2b8a008676187b394"
 
+    # Telegram Alerts
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = "@nisha_security"
+
     @property
     def is_development(self) -> bool:
         return self.app_env == "development"

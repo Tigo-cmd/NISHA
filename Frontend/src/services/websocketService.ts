@@ -40,12 +40,12 @@ class WebSocketService {
       this.socket.onmessage = (event) => {
         try {
           const raw = JSON.parse(event.data);
-          // Handle both {type, data} and {type, ...data} formats
           const type = raw.type;
           const data = raw.data !== undefined ? raw.data : raw;
           
-          if (type === 'AUDIO_ALERT_EVENT') {
-            console.warn('🚨 [WebSocketService] RAW AUDIO_ALERT_EVENT:', raw);
+          // Log critical alert events
+          if (type === 'AUDIO_ALERT_EVENT' || type === 'TRANSCRIPT_THREAT_EVENT' || type === 'VIDEO_VIOLENCE_EVENT') {
+            console.warn(`🚨 [WS] ${type}:`, raw);
           }
           
           if (type) {

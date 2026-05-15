@@ -256,11 +256,92 @@ export function DataLoader() {
     });
 
     const unsubAudioAlert = websocketService.subscribe(WebSocketMessageType.AUDIO_ALERT_EVENT, (data: any) => {
-      console.warn("🚨🚨🚨 AUDIO_ALERT_EVENT RECEIVED IN FRONTEND:", JSON.stringify(data));
+      console.warn("🚨 AUDIO_ALERT_EVENT:", data);
       if (data && data.sound_class) {
-        useStore.getState().setActiveAudioAlert(data);
+        const severity = data.severity || 'medium';
+
+        // Add to persistent alert list
+        useStore.getState().addAlert({
+          id: `audio-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          type: "AUDIO",
+          severity: severity,
+          description: `${data.sound_class} detected (${(data.confidence * 100).toFixed(0)}%)`,
+          timestamp: new Date().toLocaleString(),
+          agentId: data.agent_id || "unknown",
+          acknowledged: false,
+        });
+
+        // TIER 1 (critical) → Full-screen overlay
+        if (severity === 'critical') {
+          useStore.getState().setActiveAudioAlert({ ...data, alertCategory: 'audio' });
+          useStore.getState().setThreatLevel('critical');
+        }
+        // TIER 2 (high) → Toast notification
+        else if (severity === 'high') {
+          toast.warning(`🔊 ${data.sound_class}`, {
+            description: `Confidence: ${(data.confidence * 100).toFixed(0)}% | Agent: ${data.agent_id}`,
+            duration: 8000,
+          });
+          useStore.getState().setThreatLevel('high');
+        }
+        // TIER 3 (medium) → Subtle toast
+        else {
+          toast.info(`🔔 ${data.sound_class}`, {
+            description: `Confidence: ${(data.confidence * 100).toFixed(0)}% | Agent: ${data.agent_id}`,
+            duration: 5000,
+          });
+        }
+      }
+    });
+
+    const unsubTranscriptAlert = websocketService.subscribe(WebSocketMessageType.TRANSCRIPT_THREAT_EVENT, (data: any) => {
+      console.warn("🗣️ TRANSCRIPT_THREAT_EVENT:", data);
+      if (data && data.text) {
+        const keywords = (data.keywords || []).join(', ');
+        const severity = data.severity || 'high';
+
+        // Add to persistent alert list
+        useStore.getState().addAlert({
+          id: `transcript-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          type: "AUDIO",
+          severity: severity,
+          description: `Threat keywords detected: ${keywords}`,
+          timestamp: new Date().toLocaleString(),
+          agentId: data.agent_id || "unknown",
+          acknowledged: false,
+        });
+
+        // Critical transcript threats → overlay
+        if (severity === 'critical') {
+          useStore.getState().setActiveAudioAlert({ ...data, alertCategory: 'transcript', sound_class: `Speech Threat: ${keywords}` });
+          useStore.getState().setThreatLevel('critical');
+        } else {
+          toast.error(`🗣️ Threat Keywords Detected`, {
+            description: `"${data.text.slice(0, 100)}..." | Keywords: ${keywords}`,
+            duration: 10000,
+          });
+          useStore.getState().setThreatLevel('high');
+        }
+      }
+    });
+
+    const unsubVideoViolence = websocketService.subscribe(WebSocketMessageType.VIDEO_VIOLENCE_EVENT, (data: any) => {
+      console.warn("🎥 VIDEO_VIOLENCE_EVENT:", data);
+      if (data && data.behavior) {
+        // Add to persistent alert list
+        useStore.getState().addAlert({
+          id: `video-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          type: "VIDEO",
+          severity: "critical",
+          description: `Violence detected: ${data.behavior} (${(data.confidence * 100).toFixed(0)}%)`,
+          timestamp: new Date().toLocaleString(),
+          agentId: data.agent_id || "unknown",
+          acknowledged: false,
+        });
+
+        // Always show full-screen overlay for video violence
+        useStore.getState().setActiveAudioAlert({ ...data, alertCategory: 'video', sound_class: data.behavior });
         useStore.getState().setThreatLevel('critical');
-        console.warn("🚨 ALERT SET IN STORE:", data.sound_class);
       }
     });
 
@@ -331,6 +412,8 @@ export function DataLoader() {
       unsubNodeData();
       unsubAlert();
       unsubAudioAlert();
+      unsubTranscriptAlert();
+      unsubVideoViolence();
       unsubSystem();
       unsubNewClip();
       unsubAgentStatus();

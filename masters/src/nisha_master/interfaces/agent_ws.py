@@ -349,10 +349,17 @@ class AgentWebSocketServer:
                                 self.metrics_store.agent_stats[agent_id]["last_transcription"] = text
                             
                             # Wrap in binary frame so Backend recognizes it
-                            await self._relay_transcription_as_lite(agent_id, text, data.get("language", "en"))
+                            await self._relay_transcription_as_lite(
+                                agent_id, text, data.get("language", "en"),
+                                has_threat=data.get("has_threat", False),
+                                threat_keywords=data.get("threat_keywords")
+                            )
                         elif data.get("type") == "AUDIO_ALERT":
-                            # Relay alert to backend
+                            # Relay audio classification alert to backend
                             await self._relay_alert_as_lite(agent_id, data)
+                        elif data.get("type") == "TRANSCRIPT_ALERT":
+                            # Relay keyword threat alert to backend
+                            await self._relay_transcript_alert_as_lite(agent_id, data)
                 
             except Exception as e:
                 logger.warning(f"[AI] Stream error for {agent_id}: {e}. Reconnecting...")
@@ -368,27 +375,22 @@ class AgentWebSocketServer:
             except:
                 self.ai_connections.pop(agent_id, None)
 
-    async def _relay_transcription_as_lite(self, agent_id: str, text: str, language: str):
+    async def _relay_transcription_as_lite(self, agent_id: str, text: str, language: str,
+                                            has_threat: bool = False, threat_keywords: list = None):
         """Encapsulate transcription in a NISHA LITE frame and send to Backend."""
         payload = json.dumps({
             "type": "TRANSCRIPTION",
             "text": text,
             "language": language,
+            "has_threat": has_threat,
+            "threat_keywords": threat_keywords,
             "timestamp": time.time()
         }).encode('utf-8')
         
         # Header: magic(2s), ver(B), type(B), prio(B), res(B), seq(I), ts(Q), payload_len(I), meta_len(H)
         # stream_type 0x01 = LITE
-        header = struct.pack(
-            FRAME_HEADER_FORMAT,
-            b"NI", 0x01, 0x01, 0x01, 0x00, 0, int(time.time()*1000), len(payload), 0
-        )
-        
-        # Meta with agent_id for the relay logic
         meta = {"agent_id": agent_id, "agent_type": "HARDWARE"}
         meta_bytes = json.dumps(meta).encode('utf-8')
-        
-        # Re-pack with meta_len
         header = struct.pack(
             FRAME_HEADER_FORMAT,
             b"NI", 0x01, 0x01, 0x01, 0x00, 0, int(time.time()*1000), len(payload), len(meta_bytes)
@@ -405,6 +407,8 @@ class AgentWebSocketServer:
                 "agent_id": agent_id,
                 "text": text,
                 "language": language,
+                "has_threat": has_threat,
+                "threat_keywords": threat_keywords,
                 "is_final": True,
                 "timestamp": time.time()
             }))
@@ -417,19 +421,13 @@ class AgentWebSocketServer:
             "type": "AUDIO_ALERT",
             "sound_class": alert_data.get("sound_class"),
             "confidence": alert_data.get("confidence"),
+            "severity": alert_data.get("severity", "medium"),
+            "send_telegram": alert_data.get("send_telegram", False),
             "timestamp": alert_data.get("timestamp", time.time())
         }).encode('utf-8')
         
-        # stream_type 0x01 = LITE
-        header = struct.pack(
-            FRAME_HEADER_FORMAT,
-            b"NI", 0x01, 0x01, 0x01, 0x00, 0, int(time.time()*1000), len(payload), 0
-        )
-        
         meta = {"agent_id": agent_id, "agent_type": "HARDWARE"}
         meta_bytes = json.dumps(meta).encode('utf-8')
-        
-        # Re-pack with meta_len
         header = struct.pack(
             FRAME_HEADER_FORMAT,
             b"NI", 0x01, 0x01, 0x01, 0x00, 0, int(time.time()*1000), len(payload), len(meta_bytes)
@@ -446,6 +444,44 @@ class AgentWebSocketServer:
                 "agent_id": agent_id,
                 "sound_class": alert_data.get("sound_class"),
                 "confidence": alert_data.get("confidence"),
+                "severity": alert_data.get("severity", "medium"),
+                "timestamp": time.time()
+            }))
+        except:
+            pass
+
+    async def _relay_transcript_alert_as_lite(self, agent_id: str, alert_data: dict):
+        """Encapsulate a keyword threat alert in a NISHA LITE frame and send to Backend."""
+        payload = json.dumps({
+            "type": "TRANSCRIPT_ALERT",
+            "text": alert_data.get("text"),
+            "keywords": alert_data.get("keywords", []),
+            "keyword_count": alert_data.get("keyword_count", 0),
+            "severity": alert_data.get("severity", "high"),
+            "send_telegram": alert_data.get("send_telegram", False),
+            "language": alert_data.get("language"),
+            "timestamp": alert_data.get("timestamp", time.time())
+        }).encode('utf-8')
+        
+        meta = {"agent_id": agent_id, "agent_type": "HARDWARE"}
+        meta_bytes = json.dumps(meta).encode('utf-8')
+        header = struct.pack(
+            FRAME_HEADER_FORMAT,
+            b"NI", 0x01, 0x01, 0x01, 0x00, 0, int(time.time()*1000), len(payload), len(meta_bytes)
+        )
+        
+        full_frame = header + meta_bytes + payload
+        await self.stream_queue.put(full_frame)
+        
+        # Local Dashboard Broadcast
+        try:
+            from nisha_master.interfaces.dashboard import ws_manager
+            asyncio.create_task(ws_manager.broadcast({
+                "type": "TRANSCRIPT_THREAT_EVENT",
+                "agent_id": agent_id,
+                "text": alert_data.get("text"),
+                "keywords": alert_data.get("keywords", []),
+                "severity": alert_data.get("severity", "high"),
                 "timestamp": time.time()
             }))
         except:

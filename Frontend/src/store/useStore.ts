@@ -65,8 +65,10 @@ export const useStore = create<SystemState>((set) => ({
             agent.id === agentId ? { ...agent, ...updates } : agent
         ),
     })),
-    
 
+    removeAgent: (agentId) => set((state) => ({
+        agents: state.agents.filter((agent) => agent.id !== agentId),
+    })),
 
     addAlert: (alert) => set((state) => ({
         alerts: [alert, ...state.alerts],

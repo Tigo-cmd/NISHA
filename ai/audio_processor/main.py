@@ -29,6 +29,32 @@ transcription_service = TranscriptionService(
 # Initialize Audio Classifier (YAMNet)
 audio_classifier = YAMNetClassifier()
 
+# ── Keyword Threat Scanner ──────────────────────────────────────────
+# Ported from Nisha_eyes.py — scans transcribed text for violence keywords
+VIOLENCE_KEYWORDS = {
+    "kill", "shoot", "gun", "weapon", "knife", "stab", "blood",
+    "kidnap", "hostage", "murder", "assassinate", "fire", "bomb",
+    "attack", "help me", "i'm dying", "please help", "violence",
+    "fighting", "gunshot", "beat him", "hurt him", "destroy", "danger",
+    "pistol", "rifle", "shotgun", "ammunition", "help", "assist",
+    "robbery", "steal", "thief", "robber", "armed",
+}
+
+def scan_for_threats(text: str) -> list[str]:
+    """
+    Scans transcribed text for violence-related keywords.
+    Returns list of matched keywords (empty if clean).
+    """
+    if not text:
+        return []
+    text_lower = text.lower()
+    matches = []
+    for keyword in VIOLENCE_KEYWORDS:
+        if keyword in text_lower:
+            matches.append(keyword)
+    return matches
+
+
 # --- FastRTC Integration ---
 # This allows the Frontend to connect directly via WebRTC for ultra-low latency
 async def fastrtc_handler(audio: tuple[int, np.ndarray]):
@@ -76,10 +102,10 @@ async def websocket_stream(ws: WebSocket, agent_id: str):
     """
     WebSocket endpoint for real-time streaming from the Master node.
     Master sends raw PCM16 bytes (16kHz, Mono).
-    Uses Energy VAD and YAMNet for segmentation and alerting.
+    Uses Energy VAD + YAMNet for segmentation, alerting, and keyword scanning.
     """
     await ws.accept()
-    logger.info(f"Started real-time stream (Energy VAD + YAMNet) for agent: {agent_id}")
+    logger.info(f"Started real-time stream (Energy VAD + YAMNet + Keyword Scanner) for agent: {agent_id}")
     
     audio_buffer = bytearray()
     is_speaking = False
@@ -108,19 +134,21 @@ async def websocket_stream(ws: WebSocket, agent_id: str):
             else:
                 is_speech_frame = False
 
-            # --- REAL-TIME ALERTS (every ~0.5 seconds / 16000 bytes) ---
+            # ── REAL-TIME ALERTS (every ~0.5 seconds / 16000 bytes) ──
             if bytes_since_last_classification >= 16000:
                 # Classify the last ~1 second of audio (up to 32000 bytes)
                 window_bytes = audio_buffer[-32000:]
                 window_samples = np.frombuffer(window_bytes, dtype=np.int16)
                 if len(window_samples) > 8000:
-                    _, alert_class, alert_conf = audio_classifier.classify_frame(window_samples)
-                    if alert_class:
-                        logger.warning(f"🚨 NISHA ALERT [{agent_id}]: {alert_class} ({alert_conf:.2f})")
+                    _, alert_class, alert_conf, severity, send_telegram = audio_classifier.classify_frame(window_samples)
+                    if alert_class and severity:
+                        logger.warning(f"🚨 NISHA ALERT [{agent_id}]: {alert_class} ({alert_conf:.2f}) [TIER: {severity.upper()}]")
                         await ws.send_json({
                             "type": "AUDIO_ALERT",
                             "sound_class": alert_class,
                             "confidence": alert_conf,
+                            "severity": severity,
+                            "send_telegram": send_telegram,
                             "timestamp": time.time()
                         })
                 bytes_since_last_classification = 0
@@ -149,7 +177,7 @@ async def websocket_stream(ws: WebSocket, agent_id: str):
                 
                 # --- SMART TRANSCRIPTION FILTER ---
                 # Check if the entire segment actually contains speech
-                is_speech, _, _ = audio_classifier.classify_frame(segment_samples)
+                is_speech, _, _, _, _ = audio_classifier.classify_frame(segment_samples)
                 
                 if not is_speech:
                     logger.info(f"YAMNet filtered out non-speech segment ({len(segment_bytes)} bytes) for {agent_id}")
@@ -160,13 +188,34 @@ async def websocket_stream(ws: WebSocket, agent_id: str):
                 if result and result.get("text"):
                     text = result["text"]
                     logger.info(f"VAD SEGMENT [{agent_id}]: {text}")
-                    # Relay back to Master -> Dashboard
+
+                    # ── KEYWORD THREAT SCANNER ──────────────────────
+                    threat_keywords = scan_for_threats(text)
+                    if threat_keywords:
+                        logger.warning(
+                            f"🗣️ THREAT DETECTED [{agent_id}]: keywords={threat_keywords} in \"{text}\""
+                        )
+                        # Send transcript alert FIRST (separate from transcription)
+                        await ws.send_json({
+                            "type": "TRANSCRIPT_ALERT",
+                            "text": text,
+                            "keywords": threat_keywords,
+                            "keyword_count": len(threat_keywords),
+                            "severity": "critical" if len(threat_keywords) >= 2 else "high",
+                            "send_telegram": len(threat_keywords) >= 2,
+                            "language": result.get("language"),
+                            "timestamp": time.time()
+                        })
+
+                    # Relay transcription back to Master -> Dashboard
                     await ws.send_json({
                         "type": "PARTIAL_TRANSCRIPT",
                         "text": text,
                         "language": result.get("language"),
                         "provider": result.get("provider"),
-                        "is_final": True
+                        "is_final": True,
+                        "has_threat": len(threat_keywords) > 0,
+                        "threat_keywords": threat_keywords if threat_keywords else None
                     })
                 
     except WebSocketDisconnect:

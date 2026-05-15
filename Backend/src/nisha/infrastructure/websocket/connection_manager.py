@@ -42,10 +42,11 @@ class ConnectionManager:
     - Adaptive streaming control
     """
 
-    def __init__(self, session_factory: Optional[async_sessionmaker] = None) -> None:
+    def __init__(self, session_factory: Optional[async_sessionmaker] = None, telegram_service=None) -> None:
         self._clients: Dict[str, WebSocketClient] = {}
         self._topic_subscribers: Dict[str, Set[str]] = {}  # topic -> client_ids
         self._session_factory = session_factory
+        self._telegram_service = telegram_service
         self._last_heartbeat_update: Dict[str, float] = {}  # Track last DB update per agent
         self._last_location_update: Dict[str, float] = {}   # Track last GPS update per agent
         self._agent_status_cache: Dict[str, str] = {}       # Local cache of agent statuses
@@ -244,20 +245,69 @@ class ConnectionManager:
                             "agent_id": agent_id,
                             "text": payload_data.get("text"),
                             "language": payload_data.get("language"),
+                            "has_threat": payload_data.get("has_threat", False),
+                            "threat_keywords": payload_data.get("threat_keywords"),
                             "timestamp": payload_data.get("timestamp", time.time())
                         })
                     elif msg_type == "AUDIO_ALERT":
-                        # Broadcast critical audio alerts to the frontend
+                        severity = payload_data.get("severity", "medium")
+                        confidence = payload_data.get("confidence", 0)
+                        sound_class = payload_data.get("sound_class")
+                        send_telegram = payload_data.get("send_telegram", False)
+
                         alert_payload = {
                             "type": "AUDIO_ALERT_EVENT",
                             "agent_id": agent_id,
-                            "sound_class": payload_data.get("sound_class"),
-                            "confidence": payload_data.get("confidence"),
+                            "sound_class": sound_class,
+                            "confidence": confidence,
+                            "severity": severity,
                             "timestamp": payload_data.get("timestamp", time.time())
                         }
-                        logger.warning("🚨 BACKEND BROADCASTING AUDIO_ALERT to %d frontend clients: %s", 
-                                       len(self._topic_subscribers.get("all", set())), alert_payload)
+                        logger.warning("🚨 AUDIO_ALERT [%s]: %s (%.2f) [%s] telegram=%s", 
+                                       agent_id, sound_class, confidence, severity.upper(), send_telegram)
                         await self.broadcast(alert_payload)
+
+                        # Send to Telegram if eligible
+                        if send_telegram and self._telegram_service:
+                            asyncio.create_task(
+                                self._telegram_service.send_audio_alert(
+                                    agent_id=agent_id,
+                                    sound_class=sound_class,
+                                    confidence=confidence,
+                                    severity=severity
+                                )
+                            )
+
+                    elif msg_type == "TRANSCRIPT_ALERT":
+                        severity = payload_data.get("severity", "high")
+                        send_telegram = payload_data.get("send_telegram", False)
+                        text = payload_data.get("text", "")
+                        keywords = payload_data.get("keywords", [])
+
+                        alert_payload = {
+                            "type": "TRANSCRIPT_THREAT_EVENT",
+                            "agent_id": agent_id,
+                            "text": text,
+                            "keywords": keywords,
+                            "keyword_count": payload_data.get("keyword_count", 0),
+                            "severity": severity,
+                            "timestamp": payload_data.get("timestamp", time.time())
+                        }
+                        logger.warning("🗣️ TRANSCRIPT_ALERT [%s]: keywords=%s severity=%s telegram=%s",
+                                       agent_id, keywords, severity.upper(), send_telegram)
+                        await self.broadcast(alert_payload)
+
+                        # Send to Telegram if eligible
+                        if send_telegram and self._telegram_service:
+                            asyncio.create_task(
+                                self._telegram_service.send_transcript_alert(
+                                    agent_id=agent_id,
+                                    text=text,
+                                    keywords=keywords,
+                                    severity=severity,
+                                    language=payload_data.get("language", "en")
+                                )
+                            )
                     
         except Exception as e:
             logger.error("Failed to parse binary frame from %s: %s", client_id, e)

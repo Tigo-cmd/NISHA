@@ -80,8 +80,22 @@ async def lifespan(app: FastAPI):
     db_writer = AsyncDatabaseWriter(async_session_factory, batch_size=10, flush_interval=1.0)
     await db_writer.start()
 
+    # Initialize Telegram Alert Service
+    from nisha.services.telegram_service import TelegramService
+    telegram_service = TelegramService(
+        bot_token=settings.telegram_bot_token,
+        chat_id=settings.telegram_chat_id
+    )
+    if telegram_service.is_enabled:
+        log.info("telegram_service.initialized", channel=telegram_service.chat_id)
+    else:
+        log.warning("telegram_service.disabled", reason="No TELEGRAM_BOT_TOKEN set")
+
     # Initialize WebSocket manager with session factory for safe updates
-    connection_manager = ConnectionManager(session_factory=async_session_factory)
+    connection_manager = ConnectionManager(
+        session_factory=async_session_factory,
+        telegram_service=telegram_service
+    )
     set_ws_cm(connection_manager)
     set_system_cm(connection_manager)
 

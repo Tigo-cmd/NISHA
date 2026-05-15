@@ -101,7 +101,9 @@ export function AudioIntelligence() {
                         text: data.text,
                         language: data.language,
                         timestamp: data.timestamp || Date.now() / 1000,
-                        is_final: data.is_final
+                        is_final: data.is_final,
+                        has_threat: data.has_threat || false,
+                        threat_keywords: data.threat_keywords || null,
                     }, ...existing].slice(0, 10);
                     
                     return { ...prev, [targetId]: updated };
@@ -240,15 +242,22 @@ export function AudioIntelligence() {
                                             animate={{ opacity: 1, x: 0 }}
                                             className={cn(
                                                 "p-4 rounded-xl border transition-all",
-                                                i === 0 
-                                                    ? "bg-foreground/5 border-emerald-500/30 scale-[1.02]" 
-                                                    : "bg-surface/50 border-foreground/5 opacity-60"
+                                                t.has_threat
+                                                    ? "bg-red-500/10 border-red-500/40 scale-[1.02]"
+                                                    : i === 0 
+                                                        ? "bg-foreground/5 border-emerald-500/30 scale-[1.02]" 
+                                                        : "bg-surface/50 border-foreground/5 opacity-60"
                                             )}
                                         >
                                             <div className="flex justify-between items-center mb-2">
                                                 <div className="flex items-center gap-2">
                                                     <span className="text-[10px] font-mono text-emerald-500 uppercase tracking-widest">{t.language || "en"}</span>
                                                     {!t.is_final && <span className="w-1 h-1 rounded-full bg-emerald-500 animate-ping" />}
+                                                    {t.has_threat && (
+                                                        <span className="px-1.5 py-0.5 rounded bg-red-500/20 border border-red-500/40 text-red-400 text-[9px] font-mono uppercase animate-pulse">
+                                                            ⚠️ THREAT
+                                                        </span>
+                                                    )}
                                                 </div>
                                                 <span className="text-[10px] font-mono text-muted-foreground">
                                                     {new Date(t.timestamp * 1000).toLocaleTimeString()}
@@ -256,10 +265,19 @@ export function AudioIntelligence() {
                                             </div>
                                             <p className={cn(
                                                 "text-sm font-medium leading-relaxed",
-                                                i === 0 ? "text-foreground" : "text-muted-foreground"
+                                                t.has_threat ? "text-red-300" : i === 0 ? "text-foreground" : "text-muted-foreground"
                                             )}>
                                                 "{t.text}"
                                             </p>
+                                            {t.threat_keywords && t.threat_keywords.length > 0 && (
+                                                <div className="mt-2 flex flex-wrap gap-1">
+                                                    {t.threat_keywords.map((kw: string, ki: number) => (
+                                                        <span key={ki} className="px-1.5 py-0.5 bg-red-500/15 border border-red-500/30 text-red-400 text-[9px] font-mono rounded">
+                                                            {kw}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </motion.div>
                                     ))}
                                 </AnimatePresence>
