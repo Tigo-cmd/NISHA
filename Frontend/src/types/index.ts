@@ -149,6 +149,7 @@ export enum WebSocketMessageType {
   MASTER_STATUS = "MASTER_STATUS",
   LIVE_FRAME = "LIVE_FRAME",
   TRANSCRIPTION_EVENT = "TRANSCRIPTION_EVENT",
+  AUDIO_FRAME = "AUDIO_FRAME",
 }
 
 export interface WebSocketMessage<T> {

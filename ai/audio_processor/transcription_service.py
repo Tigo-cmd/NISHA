@@ -1,90 +1,127 @@
-import httpx
+import io
+import os
 import logging
 import asyncio
-from typing import Optional, Dict, Any
-import os
+import numpy as np
+import soundfile as sf
+from typing import Optional, Dict, Any, Tuple
+from groq import Groq
 from faster_whisper import WhisperModel
+import httpx
+from dotenv import load_dotenv
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
 class TranscriptionService:
-    def __init__(self, api_key: str, model_size: str = "base", device: str = "cuda"):
-        self.api_key = api_key
-        self.intron_url = "https://voice.intron.io/api/v1/transcribe" # Based on research, but verify with actual docs if possible
-        # Note: If the user provides a different endpoint, we should use that.
+    def __init__(self, api_key: Optional[str] = None, model_size: str = "base", device: str = "cuda"):
+        # We prioritize Groq API key from environment
+        self.groq_api_key = os.getenv("GROQ_API_KEY")
+        self.groq_client = Groq(api_key=self.groq_api_key) if self.groq_api_key else None
         
-        self.whisper_model = WhisperModel(
-            model_size,
-            device=device,
-            compute_type="int8"
-        )
-        logger.info(f"TranscriptionService initialized with Whisper ({device}) and Intron Sahara")
-
-    async def transcribe(self, audio_data: bytes, language: Optional[str] = None) -> Dict[str, Any]:
-        """Try Intron Sahara first, fallback to Whisper."""
+        # Local Whisper as robust fallback
         try:
-            result = await self._transcribe_intron(audio_data, language)
-            if result and result.get("text"):
-                return {
-                    "text": result["text"],
-                    "language": result.get("language", language),
-                    "provider": "intron",
-                    "confidence": result.get("confidence", 1.0)
-                }
-        except Exception as e:
-            logger.warning(f"Intron Sahara transcription failed: {e}. Falling back to Whisper.")
-
-        # Fallback to Whisper
-        try:
-            return await self._transcribe_whisper(audio_data, language)
-        except Exception as e:
-            logger.error(f"Whisper transcription failed: {e}")
-            return {"text": "", "language": None, "provider": "error", "error": str(e)}
-
-    async def _transcribe_intron(self, audio_data: bytes, language: Optional[str]) -> Optional[Dict[str, Any]]:
-        """Call Intron Sahara v2 API."""
-        # Note: Intron Sahara v2 might require specific headers or multi-part form data
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-        }
-        
-        # This is a placeholder for the actual API call structure
-        # We might need to send it as a file
-        files = {'file': ('audio.wav', audio_data, 'audio/wav')}
-        data = {}
-        if language:
-            data['language'] = language
-
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            # Assuming POST to /transcribe
-            # Based on the user's PRD: "Sign up for Intron Sahara v2 API"
-            # I will use the documented pattern if available, or a generic one.
-            response = await client.post(
-                "https://api.intron.io/v1/stt/transcribe", # Example endpoint
-                headers=headers,
-                files=files,
-                data=data
+            self.whisper_model = WhisperModel(
+                model_size,
+                device=device,
+                compute_type="int8"
             )
-            
-            if response.status_code == 200:
-                return response.json()
+            logger.info(f"Local Whisper fallback initialized ({device})")
+        except Exception as e:
+            logger.warning(f"Whisper initialization failed: {e}. Falling back to CPU or ignoring.")
+            self.whisper_model = None
+
+        if self.groq_client:
+            logger.info("TranscriptionService: Groq (Primary) enabled")
+        else:
+            logger.warning("TranscriptionService: GROQ_API_KEY not found. Groq disabled.")
+
+    def to_wav_bytes(self, audio: Tuple[int, np.ndarray]) -> bytes:
+        """Helper: numpy audio tuple -> WAV bytes for Groq."""
+        sample_rate, array = audio
+        # FastRTC usually gives (1, samples) or (samples,)
+        array = array.squeeze()
+        
+        # Ensure float32 for soundfile if it's not already
+        if array.dtype != np.float32:
+            if array.dtype == np.int16:
+                array = array.astype(np.float32) / 32768.0
             else:
-                logger.error(f"Intron API error {response.status_code}: {response.text}")
-                return None
+                array = array.astype(np.float32)
+                
+        buf = io.BytesIO()
+        sf.write(buf, array, sample_rate, format="WAV")
+        buf.seek(0)
+        return buf.read()
+
+    async def transcribe(self, audio_data: Any, language: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Transcribe audio. 
+        Accepts: 
+          - bytes (raw PCM16, 16kHz)
+          - tuple (sample_rate, numpy_array)
+        """
+        # 1. Try Groq (Ultra Fast)
+        if self.groq_client:
+            try:
+                if isinstance(audio_data, bytes):
+                    # Convert raw bytes to tuple for the helper
+                    samples = np.frombuffer(audio_data, dtype=np.int16)
+                    wav_bytes = self.to_wav_bytes((16000, samples))
+                else:
+                    # Already a tuple (likely from FastRTC)
+                    wav_bytes = self.to_wav_bytes(audio_data)
+
+                def call_groq():
+                    return self.groq_client.audio.transcriptions.create(
+                        file=("audio.wav", wav_bytes),
+                        model="whisper-large-v3-turbo",
+                        response_format="text",
+                        language=language
+                    ).strip()
+
+                text = await asyncio.get_event_loop().run_in_executor(None, call_groq)
+                
+                if text:
+                    logger.info(f"[GROQ] Transcribed: {text[:50]}...")
+                    return {
+                        "text": text,
+                        "language": language or "en",
+                        "provider": "groq",
+                        "confidence": 1.0
+                    }
+            except Exception as e:
+                logger.error(f"Groq transcription failed: {e}")
+
+        # 2. Fallback to Local Whisper
+        if self.whisper_model:
+            try:
+                if not isinstance(audio_data, bytes):
+                    # Convert tuple back to PCM16 bytes for internal whisper helper
+                    _, array = audio_data
+                    if array.dtype == np.float32:
+                        pcm_bytes = (array * 32768.0).astype(np.int16).tobytes()
+                    else:
+                        pcm_bytes = array.astype(np.int16).tobytes()
+                else:
+                    pcm_bytes = audio_data
+                
+                return await self._transcribe_whisper(pcm_bytes, language)
+            except Exception as e:
+                logger.error(f"Whisper fallback failed: {e}")
+
+        return {"text": "", "language": None, "provider": "error", "error": "Transcription failed"}
 
     async def _transcribe_whisper(self, audio_data: bytes, language: Optional[str]) -> Dict[str, Any]:
-        """Perform local Whisper inference."""
+        """Internal local Whisper inference."""
         import tempfile
-        import os
-        import subprocess
-
-        # Faster-whisper works better with file paths or specific array formats
+        
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
             tmp.write(audio_data)
             tmp_path = tmp.name
 
         try:
-            # Run in executor because faster-whisper is CPU/GPU intensive and blocking
             def run_inference():
                 segments, info = self.whisper_model.transcribe(
                     tmp_path,

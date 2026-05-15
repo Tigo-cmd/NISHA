@@ -2,27 +2,49 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, F
 from transcription_service import TranscriptionService
 import os
 import json
-import uuid
 import logging
+import numpy as np
 from dotenv import load_dotenv
+from fastrtc import ReplyOnPause, Stream
 
 # Load configuration
 load_dotenv()
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="NISHA AI Audio Processor")
 
-# Initialize transcription service
+# Initialize transcription service (Handles Groq + Local Fallback)
 WHISPER_MODEL = os.getenv("WHISPER_MODEL_SIZE", "base")
-WHISPER_DEVICE = os.getenv("WHISPER_DEVICE", "cpu")  # Default to CPU for stability
+WHISPER_DEVICE = os.getenv("WHISPER_DEVICE", "cpu")
 
 transcription_service = TranscriptionService(
-    api_key=os.getenv("INTRON_SAHARA_API_KEY"),
     model_size=WHISPER_MODEL,
     device=WHISPER_DEVICE
 )
+
+# --- FastRTC Integration ---
+# This allows the Frontend to connect directly via WebRTC for ultra-low latency
+async def fastrtc_handler(audio: tuple[int, np.ndarray]):
+    """
+    FastRTC calls this when voice activity stops (ReplyOnPause).
+    `audio` is (sample_rate, numpy_array).
+    """
+    result = await transcription_service.transcribe(audio)
+    if result and result.get("text"):
+        logger.info(f"[FastRTC] TRANSCRIPT: {result['text']}")
+        # In a real scenario, we might broadcast this to all dashboard clients
+        # or return it to the browser if mode was send-receive.
+    return None
+
+stream = Stream(
+    handler=ReplyOnPause(fastrtc_handler),
+    modality="audio",
+    mode="send-receive",
+)
+# Mount FastRTC at /rtc
+stream.mount(app)
 
 @app.post("/api/v1/transcribe")
 async def transcribe_audio(
@@ -32,7 +54,7 @@ async def transcribe_audio(
 ):
     """REST endpoint for single-segment transcription (Master relay)."""
     audio_data = await file.read()
-    logger.info(f"Received transcription request from agent {agent_id} ({len(audio_data)} bytes)")
+    logger.info(f"Received REST transcription request for agent {agent_id}")
     
     result = await transcription_service.transcribe(audio_data, language=language)
     
@@ -41,99 +63,82 @@ async def transcribe_audio(
         "agent_id": agent_id,
         "text": result["text"],
         "language": result["language"],
-        "provider": result["provider"],
-        "confidence": result.get("confidence", 0.0)
+        "provider": result["provider"]
     }
-
-@app.websocket("/ws/audio")
-async def websocket_audio(ws: WebSocket):
-    """WebSocket endpoint for real-time streaming transcription."""
-    await ws.accept()
-    logger.info("New WebSocket client connected for audio processing")
-
-    try:
-        while True:
-            message = await ws.receive()
-            
-            if "bytes" not in message:
-                continue
-
-            audio_bytes = message["bytes"]
-            if not audio_bytes:
-                continue
-
-            # In-memory processing via TranscriptionService
-            # Note: For streaming, we usually want to accumulate chunks, 
-            # but for this existing logic, we process the chunk as a whole.
-            result = await transcription_service.transcribe(audio_bytes)
-
-            response = {
-                "text": result["text"],
-                "language": result["language"],
-                "provider": result["provider"],
-                "gunshot": False # Placeholder for future classification
-            }
-
-            await ws.send_text(json.dumps(response))
-
-    except WebSocketDisconnect:
-        logger.info("WebSocket client disconnected")
-    except Exception as e:
-        logger.error(f"WebSocket error: {e}")
 
 @app.websocket("/api/v1/stream/{agent_id}")
 async def websocket_stream(ws: WebSocket, agent_id: str):
+    """
+    WebSocket endpoint for real-time streaming from the Master node.
+    Master sends raw PCM16 bytes (16kHz, Mono).
+    Uses FastRTC's SileroVAD for pause-based segmentation.
+    """
     await ws.accept()
-    logger.info(f"Started real-time stream for agent: {agent_id}")
+    logger.info(f"Started real-time Groq stream (with Energy VAD) for agent: {agent_id}")
     
-    # We will use a rolling buffer to keep context
-    rolling_buffer = bytearray()
+    audio_buffer = bytearray()
+    is_speaking = False
+    silence_duration = 0
     
     try:
         while True:
             # Receive raw PCM bytes from the Master
             data = await ws.receive_bytes()
-            rolling_buffer.extend(data)
+            if not data:
+                continue
+                
+            # Ensure data length is even to prevent np.frombuffer crashes on fragmented packets
+            if len(data) % 2 != 0:
+                data += b'\x00'
+                
+            audio_buffer.extend(data)
             
-            # When we have enough for a small segment (e.g., 1.5 seconds)
-            if len(rolling_buffer) >= 48000: # 16kHz * 2 bytes * 1.5s
-                # Process this segment
-                # Wrap raw PCM in a WAV header so Whisper/FFmpeg can read it
-                import struct
-                sample_rate = 16000
-                bits_per_sample = 16
-                channels = 1
-                data_size = len(rolling_buffer)
+            # Simple Energy-based VAD (Root Mean Square)
+            samples = np.frombuffer(data, dtype=np.int16)
+            if len(samples) > 0:
+                rms = np.sqrt(np.mean(samples.astype(np.float32)**2))
+                is_speech_frame = rms > 300  # Threshold for 16-bit PCM voice detection
+            else:
+                is_speech_frame = False
+
+            if is_speech_frame:
+                if not is_speaking:
+                    logger.debug(f"Agent {agent_id} started speaking")
+                is_speaking = True
+                silence_duration = 0
+            else:
+                if is_speaking:
+                    silence_duration += len(samples) / 16000.0 # seconds
+                    
+            # If we were speaking and now there is a significant pause (~0.5s)
+            # OR if the buffer is getting too long (e.g. 10s safety limit)
+            if (is_speaking and silence_duration >= 0.5) or len(audio_buffer) > 320000: # 10s limit
+                # Process the segment
+                segment_to_transcribe = bytes(audio_buffer)
+                audio_buffer = bytearray() # Clear buffer
+                is_speaking = False
+                silence_duration = 0
                 
-                wav_header = struct.pack(
-                    '<4sI4s4sIHHIIHH4sI',
-                    b'RIFF', 36 + data_size, b'WAVE', b'fmt ', 16, 1, channels,
-                    sample_rate, sample_rate * channels * bits_per_sample // 8,
-                    channels * bits_per_sample // 8, bits_per_sample, b'data', data_size
-                )
-                segment_data = wav_header + bytes(rolling_buffer)
-                
-                # Call the transcription service
-                result = await transcription_service.transcribe(segment_data)
+                result = await transcription_service.transcribe(segment_to_transcribe)
                 
                 if result and result.get("text"):
                     text = result["text"]
-                    logger.info(f"LIVE TRANSCRIPT [{agent_id}]: {text}")
-                    # Send the partial text back to the Master
+                    logger.info(f"VAD SEGMENT [{agent_id}]: {text}")
+                    # Relay back to Master -> Dashboard
                     await ws.send_json({
                         "type": "PARTIAL_TRANSCRIPT",
                         "text": text,
-                        "language": result.get("language")
+                        "language": result.get("language"),
+                        "provider": result.get("provider"),
+                        "is_final": True
                     })
-                
-                # Keep the last 0.5s for overlap/context
-                rolling_buffer = rolling_buffer[-16000:] 
                 
     except WebSocketDisconnect:
         logger.info(f"Stream disconnected for agent: {agent_id}")
     except Exception as e:
-        logger.error(f"Streaming error: {e}")
+        logger.error(f"Streaming error for {agent_id}: {e}")
 
 if __name__ == "__main__":
     import uvicorn
+    # AI Processor runs on port 8083 by default
     uvicorn.run(app, host="0.0.0.0", port=8083)

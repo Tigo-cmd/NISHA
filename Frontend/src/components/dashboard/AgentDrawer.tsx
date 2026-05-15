@@ -147,12 +147,87 @@ function OverviewTab({ agent }: { agent: Agent }) {
     );
 }
 
+class RealtimeAudioPlayer {
+    ctx: AudioContext;
+    startTime: number;
+    lookahead: number;
+
+    constructor() {
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        this.ctx = new AudioContextClass({ sampleRate: 16000 });
+        this.startTime = 0;
+        this.lookahead = 0.05; // 50ms buffer
+    }
+
+    playChunk(base64Data: string) {
+        try {
+            if (this.ctx.state === 'suspended') this.ctx.resume();
+
+            const binary = atob(base64Data);
+            const len = binary.length;
+            const validLen = len % 2 === 0 ? len : len - 1;
+            if (validLen <= 0) return;
+
+            const bytes = new Uint8Array(validLen);
+            for (let i = 0; i < validLen; i++) bytes[i] = binary.charCodeAt(i);
+            
+            const int16 = new Int16Array(bytes.buffer);
+            const float32 = new Float32Array(int16.length);
+            for (let i = 0; i < int16.length; i++) {
+                float32[i] = int16[i] / 32768.0;
+            }
+
+            const audioBuffer = this.ctx.createBuffer(1, float32.length, 16000);
+            audioBuffer.getChannelData(0).set(float32);
+
+            const source = this.ctx.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(this.ctx.destination);
+
+            const now = this.ctx.currentTime;
+            if (this.startTime < now || (this.startTime - now) > 1.0) {
+                this.startTime = now + this.lookahead;
+            }
+            
+            source.start(this.startTime);
+            this.startTime += audioBuffer.duration;
+        } catch (e) {
+            console.warn("[RealtimeAudio] Playback error:", e);
+        }
+    }
+
+    close() {
+        if (this.ctx && this.ctx.state !== 'closed') {
+            this.ctx.close();
+        }
+    }
+}
+
 function AudioTab({ agent }: { agent: Agent }) {
     const { securityEvents } = useStore();
     const agentEvents = securityEvents.filter(e => e.agentId === agent.id);
     const [latestAudio, setLatestAudio] = useState<string | null>(null);
     const [transcriptions, setTranscriptions] = useState<{ text: string; language: string; timestamp: number }[]>([]);
-    const [loading, setLoading] = useState(false);
+    const [isListeningLive, setIsListeningLive] = useState(false);
+    const playerRef = useRef<RealtimeAudioPlayer | null>(null);
+
+    // Function to toggle live listening
+    const toggleListenLive = () => {
+        if (isListeningLive) {
+            if (playerRef.current) {
+                playerRef.current.close();
+                playerRef.current = null;
+            }
+            setIsListeningLive(false);
+        } else {
+            playerRef.current = new RealtimeAudioPlayer();
+            // Resume context since it's created on click
+            if (playerRef.current.ctx.state === 'suspended') {
+                playerRef.current.ctx.resume();
+            }
+            setIsListeningLive(true);
+        }
+    };
 
     useEffect(() => {
         // Subscribe to live transcriptions
@@ -163,6 +238,15 @@ function AudioTab({ agent }: { agent: Agent }) {
                     language: data.language,
                     timestamp: data.timestamp
                 }, ...prev].slice(0, 5)); // Keep last 5
+            }
+        });
+
+        // Subscribe to gapless live audio streaming
+        const unsubAudioFrame = websocketService.subscribe(WebSocketMessageType.AUDIO_FRAME, (data: any) => {
+            if (data && data.agent_id === agent.id && data.audio) {
+                if (playerRef.current) {
+                    playerRef.current.playChunk(data.audio);
+                }
             }
         });
 
@@ -194,8 +278,10 @@ function AudioTab({ agent }: { agent: Agent }) {
         const interval = setInterval(fetchAudio, 10000); // Poll every 10s to match recording loop
         return () => {
             unsubTranscription();
+            unsubAudioFrame();
             clearInterval(interval);
             if (audioUrl) URL.revokeObjectURL(audioUrl);
+            if (playerRef.current) playerRef.current.close();
         };
     }, [agent.id]);
 
@@ -208,9 +294,22 @@ function AudioTab({ agent }: { agent: Agent }) {
             <div>
                 <div className="flex items-center justify-between mb-3">
                     <span className="text-xs font-mono text-muted-foreground uppercase">Live Waveform</span>
-                    <div className="flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-                        <span className="text-[10px] font-mono text-red-500 uppercase">Live</span>
+                    <div className="flex items-center gap-3">
+                        <button 
+                            onClick={toggleListenLive}
+                            className={cn(
+                                "text-[10px] font-mono uppercase px-2 py-1 rounded transition-colors",
+                                isListeningLive 
+                                    ? "bg-red-500/20 text-red-500 hover:bg-red-500/30" 
+                                    : "bg-foreground/10 text-foreground hover:bg-foreground/20"
+                            )}
+                        >
+                            {isListeningLive ? "Stop Live Audio" : "Listen Live"}
+                        </button>
+                        <div className="flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                            <span className="text-[10px] font-mono text-red-500 uppercase">Live</span>
+                        </div>
                     </div>
                 </div>
                 <WaveformVisualizer height={120} color="#e0e0e0" level={agent.audioLevel} />

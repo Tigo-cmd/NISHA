@@ -56,8 +56,9 @@ class AgentWebSocketServer:
         
         # Pull AI service URLs from centralized config
         from nisha_master.config import settings
-        self.ai_service_url = f"http://{settings.backend_host}:8083/api/v1/transcribe"
-        self.ai_stream_url = f"ws://{settings.backend_host}:8083/api/v1/stream"
+        self.ai_service_url = settings.ai_service_url
+        self.ai_stream_url = settings.ai_stream_url
+        logger.info(f"AI Service configured: REST={self.ai_service_url}, Stream={self.ai_stream_url}")
         
         self.ai_connections: Dict[str, Any] = {} # Persistent streams
         self.ai_pending: set[str] = set() # Track connecting state
@@ -237,7 +238,8 @@ class AgentWebSocketServer:
                             else:
                                 stats["is_speaking"] = False
 
-                            # 2. Real-time Streaming Logic
+                        # 2. Real-time Streaming Logic
+                        if frame_meta.get('format') != 'aac':
                             if agent_id not in self.ai_connections and agent_id not in self.ai_pending:
                                 self.ai_pending.add(agent_id)
                                 asyncio.create_task(self._init_ai_stream(agent_id))
@@ -391,6 +393,20 @@ class AgentWebSocketServer:
         
         full_frame = header + meta_bytes + payload
         await self.stream_queue.put(full_frame)
+        
+        # Local Dashboard Broadcast (Zero Latency)
+        try:
+            from nisha_master.interfaces.dashboard import ws_manager
+            asyncio.create_task(ws_manager.broadcast({
+                "type": "TRANSCRIPTION_EVENT",
+                "agent_id": agent_id,
+                "text": text,
+                "language": language,
+                "is_final": True,
+                "timestamp": time.time()
+            }))
+        except:
+            pass
 
     async def _handle_control_message(self, agent_id: str, message: str):
         pass
