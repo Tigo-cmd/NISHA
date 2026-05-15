@@ -183,8 +183,8 @@ class ConnectionManager:
                     }))
                     
             # Real-time Telemetry Broadcast for Dashboard
-            # type 0x04 = LOCATION, type 0x03 = AUDIO/TELEMETRY
-            if frame.stream_type in [0x04, 0x03] or (frame.stream_type == 0x01 and frame.metadata.get("gps")):
+            # type 0x04 = LOCATION, type 0x03 = AUDIO/TELEMETRY, type 0x01 = LITE
+            if frame.stream_type in [0x01, 0x03, 0x04]:
                 agent_id = frame.metadata.get("agent_id")
                 master_id = client.master_id
                 
@@ -234,16 +234,30 @@ class ConnectionManager:
 
                 asyncio.create_task(self.broadcast(telemetry))
 
-                # Handle Transcriptions from Master
-                if frame.stream_type == 0x01 and payload_data.get("type") == "TRANSCRIPTION":
-                    # Broadcast to everyone (Dashboard)
-                    await self.broadcast({
-                        "type": "TRANSCRIPTION_EVENT",
-                        "agent_id": agent_id,
-                        "text": payload_data.get("text"),
-                        "language": payload_data.get("language"),
-                        "timestamp": payload_data.get("timestamp", time.time())
-                    })
+                # Handle Transcriptions and Alerts from Master
+                if frame.stream_type == 0x01:
+                    msg_type = payload_data.get("type")
+                    if msg_type == "TRANSCRIPTION":
+                        # Broadcast to everyone (Dashboard)
+                        await self.broadcast({
+                            "type": "TRANSCRIPTION_EVENT",
+                            "agent_id": agent_id,
+                            "text": payload_data.get("text"),
+                            "language": payload_data.get("language"),
+                            "timestamp": payload_data.get("timestamp", time.time())
+                        })
+                    elif msg_type == "AUDIO_ALERT":
+                        # Broadcast critical audio alerts to the frontend
+                        alert_payload = {
+                            "type": "AUDIO_ALERT_EVENT",
+                            "agent_id": agent_id,
+                            "sound_class": payload_data.get("sound_class"),
+                            "confidence": payload_data.get("confidence"),
+                            "timestamp": payload_data.get("timestamp", time.time())
+                        }
+                        logger.warning("🚨 BACKEND BROADCASTING AUDIO_ALERT to %d frontend clients: %s", 
+                                       len(self._topic_subscribers.get("all", set())), alert_payload)
+                        await self.broadcast(alert_payload)
                     
         except Exception as e:
             logger.error("Failed to parse binary frame from %s: %s", client_id, e)
