@@ -44,6 +44,10 @@ class WebSocketService {
           const type = raw.type;
           const data = raw.data !== undefined ? raw.data : raw;
           
+          if (type === 'AUDIO_ALERT_EVENT') {
+            console.warn('🚨 [WebSocketService] RAW AUDIO_ALERT_EVENT:', raw);
+          }
+          
           if (type) {
             this.notifyListeners(type, data);
           }
