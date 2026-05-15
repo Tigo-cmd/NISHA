@@ -1,11 +1,13 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Form
 from transcription_service import TranscriptionService
+from audio_classifier import YAMNetClassifier
 import os
 import json
 import logging
 import numpy as np
 from dotenv import load_dotenv
 from fastrtc import ReplyOnPause, Stream
+import time
 
 # Load configuration
 load_dotenv()
@@ -23,6 +25,9 @@ transcription_service = TranscriptionService(
     model_size=WHISPER_MODEL,
     device=WHISPER_DEVICE
 )
+
+# Initialize Audio Classifier (YAMNet)
+audio_classifier = YAMNetClassifier()
 
 # --- FastRTC Integration ---
 # This allows the Frontend to connect directly via WebRTC for ultra-low latency
@@ -71,14 +76,15 @@ async def websocket_stream(ws: WebSocket, agent_id: str):
     """
     WebSocket endpoint for real-time streaming from the Master node.
     Master sends raw PCM16 bytes (16kHz, Mono).
-    Uses FastRTC's SileroVAD for pause-based segmentation.
+    Uses Energy VAD and YAMNet for segmentation and alerting.
     """
     await ws.accept()
-    logger.info(f"Started real-time Groq stream (with Energy VAD) for agent: {agent_id}")
+    logger.info(f"Started real-time stream (Energy VAD + YAMNet) for agent: {agent_id}")
     
     audio_buffer = bytearray()
     is_speaking = False
     silence_duration = 0
+    bytes_since_last_classification = 0
     
     try:
         while True:
@@ -92,6 +98,7 @@ async def websocket_stream(ws: WebSocket, agent_id: str):
                 data += b'\x00'
                 
             audio_buffer.extend(data)
+            bytes_since_last_classification += len(data)
             
             # Simple Energy-based VAD (Root Mean Square)
             samples = np.frombuffer(data, dtype=np.int16)
@@ -100,6 +107,24 @@ async def websocket_stream(ws: WebSocket, agent_id: str):
                 is_speech_frame = rms > 300  # Threshold for 16-bit PCM voice detection
             else:
                 is_speech_frame = False
+
+            # --- REAL-TIME ALERTS (every ~0.5 seconds / 16000 bytes) ---
+            if bytes_since_last_classification >= 16000:
+                # Classify the last ~1 second of audio (up to 32000 bytes)
+                window_bytes = audio_buffer[-32000:]
+                window_samples = np.frombuffer(window_bytes, dtype=np.int16)
+                if len(window_samples) > 8000:
+                    _, alert_class, alert_conf = audio_classifier.classify_frame(window_samples)
+                    if alert_class:
+                        logger.warning(f"🚨 NISHA ALERT [{agent_id}]: {alert_class} ({alert_conf:.2f})")
+                        await ws.send_json({
+                            "type": "AUDIO_ALERT",
+                            "sound_class": alert_class,
+                            "confidence": alert_conf,
+                            "timestamp": time.time()
+                        })
+                bytes_since_last_classification = 0
+
 
             if is_speech_frame:
                 if not is_speaking:
@@ -114,12 +139,23 @@ async def websocket_stream(ws: WebSocket, agent_id: str):
             # OR if the buffer is getting too long (e.g. 10s safety limit)
             if (is_speaking and silence_duration >= 0.5) or len(audio_buffer) > 320000: # 10s limit
                 # Process the segment
-                segment_to_transcribe = bytes(audio_buffer)
+                segment_bytes = bytes(audio_buffer)
                 audio_buffer = bytearray() # Clear buffer
                 is_speaking = False
                 silence_duration = 0
+                bytes_since_last_classification = 0
                 
-                result = await transcription_service.transcribe(segment_to_transcribe)
+                segment_samples = np.frombuffer(segment_bytes, dtype=np.int16)
+                
+                # --- SMART TRANSCRIPTION FILTER ---
+                # Check if the entire segment actually contains speech
+                is_speech, _, _ = audio_classifier.classify_frame(segment_samples)
+                
+                if not is_speech:
+                    logger.info(f"YAMNet filtered out non-speech segment ({len(segment_bytes)} bytes) for {agent_id}")
+                    continue
+                    
+                result = await transcription_service.transcribe(segment_bytes)
                 
                 if result and result.get("text"):
                     text = result["text"]
