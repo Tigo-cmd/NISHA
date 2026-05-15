@@ -6,6 +6,7 @@ import { apiService } from "@/services/apiService";
 import { websocketService } from "@/services/websocketService";
 import { WebSocketMessageType, Agent as StoreAgent, Master as StoreMaster } from "@/types";
 import { config } from "@/lib/networkConfig";
+import { toast } from "sonner";
 
 // Maps backend Agent model to frontend StoreAgent model
 const mapBackendAgent = (backendAgent: any): StoreAgent => {
@@ -254,6 +255,15 @@ export function DataLoader() {
       }
     });
 
+    const unsubAudioAlert = websocketService.subscribe(WebSocketMessageType.AUDIO_ALERT_EVENT, (data: any) => {
+      console.warn("🚨🚨🚨 AUDIO_ALERT_EVENT RECEIVED IN FRONTEND:", JSON.stringify(data));
+      if (data && data.sound_class) {
+        useStore.getState().setActiveAudioAlert(data);
+        useStore.getState().setThreatLevel('critical');
+        console.warn("🚨 ALERT SET IN STORE:", data.sound_class);
+      }
+    });
+
     const unsubSystem = websocketService.subscribe(WebSocketMessageType.SYSTEM_STATUS, (data: any) => {
       if (data) {
         setSystemStatus(data);
@@ -320,6 +330,7 @@ export function DataLoader() {
       }
       unsubNodeData();
       unsubAlert();
+      unsubAudioAlert();
       unsubSystem();
       unsubNewClip();
       unsubAgentStatus();
