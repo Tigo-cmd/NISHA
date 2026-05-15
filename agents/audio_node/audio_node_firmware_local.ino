@@ -9,15 +9,15 @@ const char* ssid = "NISHA_CES";
 const char* password = "CES@2470";
 
 // LOCAL LAN CONFIG
-const char* backend_url = "http://192.168.1.190:8000/api/v1/agents"; // Laptop IP
-const char* ws_host = "192.168.1.231";                             // Master Pi IP
+const char* backend_url = "http://192.168.18.14:8000/api/v1/agents"; // Laptop IP
+const char* ws_host = "192.168.18.13";                             // Master Pi IP
 const int ws_port = 8082;                                          // Master Agent WS Port
 const char* ws_path = "/";
 
 const char* api_key = "nisha_master_key_2024_secure";
 const char* agent_id = "AUDIO-NODE-01";
 
-// ---------------- STATE ----------------
+// ---------------- STATE ---------------
 WebSocketsClient webSocket;
 bool isConnected = false;
 
