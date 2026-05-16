@@ -14,10 +14,11 @@ print("Starting training... Make sure you have labels ready!")
 
 results = model.train(
     data=data_path, 
-    epochs=100, 
+    epochs=50, 
     imgsz=640, 
-    batch=16, 
-    name='orange_fine_tuning'
+    batch=16,
+    patience=10, 
+    name='weapons_detector'
 )
 
 print(f"Training finished! Your new model is saved in: runs/detect/orange_fine_tuning/weights/best.pt")
