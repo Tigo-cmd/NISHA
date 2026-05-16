@@ -5,14 +5,14 @@
  * to minimize latency on home networks.
  */
 
-const NETWORK_MODE = process.env.NEXT_PUBLIC_NETWORK_MODE || 'TUNNEL'; // 'LOCAL' or 'TUNNEL'
+const NETWORK_MODE = process.env.NEXT_PUBLIC_NETWORK_MODE || 'LOCAL'; // 'LOCAL' or 'TUNNEL'
 
 // Backend Configuration
-const BACKEND_LOCAL_IP = process.env.NEXT_PUBLIC_BACKEND_IP || '192.168.18.14';
+const BACKEND_LOCAL_IP = process.env.NEXT_PUBLIC_BACKEND_IP || '192.168.1.190';
 const BACKEND_TUNNEL_HOST = 'api.buildwave.pro';
 
 // Master Configuration (Optional, if dashboard needs direct Master access)
-const MASTER_LOCAL_IP = process.env.NEXT_PUBLIC_MASTER_IP || '192.168.18.13';
+const MASTER_LOCAL_IP = process.env.NEXT_PUBLIC_MASTER_IP || '192.168.1.231';
 const MASTER_TUNNEL_HOST = 'm01.buildwave.pro';
 
 export const getBackendUrls = () => {
