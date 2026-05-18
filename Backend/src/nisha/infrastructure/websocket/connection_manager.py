@@ -51,6 +51,7 @@ class ConnectionManager:
         self._last_location_update: Dict[str, float] = {}   # Track last GPS update per agent
         self._agent_status_cache: Dict[str, str] = {}       # Local cache of agent statuses
         self._last_audio_level: Dict[str, int] = {}         # Track latest intensity level per agent
+        self._recent_audio_cache: Dict[str, bytes] = {}     # agent_id -> latest WAV-wrapped audio bytes
         
         # Priority queues for stream processing
         self.critical_queue = asyncio.Queue(maxsize=1000)
@@ -267,14 +268,18 @@ class ConnectionManager:
                                        agent_id, sound_class, confidence, severity.upper(), send_telegram)
                         await self.broadcast(alert_payload)
 
-                        # Send to Telegram if eligible
+                        # Send to Telegram if eligible (with cached audio + location)
                         if send_telegram and self._telegram_service:
+                            cached_audio = self._recent_audio_cache.get(agent_id)
+                            location_data = await self._fetch_agent_location(agent_id)
                             asyncio.create_task(
                                 self._telegram_service.send_audio_alert(
                                     agent_id=agent_id,
                                     sound_class=sound_class,
                                     confidence=confidence,
-                                    severity=severity
+                                    severity=severity,
+                                    audio_data=cached_audio,
+                                    location_data=location_data,
                                 )
                             )
 
@@ -297,15 +302,19 @@ class ConnectionManager:
                                        agent_id, keywords, severity.upper(), send_telegram)
                         await self.broadcast(alert_payload)
 
-                        # Send to Telegram if eligible
+                        # Send to Telegram if eligible (with location + audio evidence)
                         if send_telegram and self._telegram_service:
+                            cached_audio = self._recent_audio_cache.get(agent_id)
+                            location_data = await self._fetch_agent_location(agent_id)
                             asyncio.create_task(
                                 self._telegram_service.send_transcript_alert(
                                     agent_id=agent_id,
                                     text=text,
                                     keywords=keywords,
                                     severity=severity,
-                                    language=payload_data.get("language", "en")
+                                    language=payload_data.get("language", "en"),
+                                    location_data=location_data,
+                                    audio_data=cached_audio,
                                 )
                             )
                     
@@ -337,10 +346,12 @@ class ConnectionManager:
         try:
             behavior = "NonViolence"
             confidence = 1.0
+            weapons = []
+            annotated_frame = None
             
             if ai_processor:
                 # 1. AI Inference (pass metadata for raw_rgb handling)
-                behavior, confidence = await ai_processor.process_video_frame(frame.payload, frame.metadata)
+                behavior, confidence, weapons, annotated_frame = await ai_processor.process_video_frame(frame.payload, frame.metadata)
             
             # 2. Persistence
             if db_writer:
@@ -381,7 +392,48 @@ class ConnectionManager:
                 "behavior": behavior
             })
 
-            # 4. Multi-agent Correlation (Only if not non-violence)
+            # 4. Handle Alerts (Weapons or High-Confidence Violence)
+            is_serious_threat = (behavior != "NonViolence" and confidence >= 0.8) or len(weapons) > 0
+            
+            if is_serious_threat:
+                # Get Location for the alert
+                location_data = {"lat": None, "lng": None}
+                try:
+                    from nisha.infrastructure.database.repositories.agent_repo import SqlAlchemyAgentRepository
+                    from nisha.infrastructure.database.session import async_session_factory
+                    async with async_session_factory() as session:
+                        repo = SqlAlchemyAgentRepository(session)
+                        agent = await repo.get_by_id(agent_id)
+                        if agent:
+                            location_data = {"lat": agent.gps_lat, "lng": agent.gps_lng}
+                except Exception as e:
+                    logger.warning(f"Could not fetch location for alert: {e}")
+
+                # Broadcast to Frontend
+                await self.broadcast({
+                    "type": "WEAPON_THREAT_EVENT",
+                    "agent_id": agent_id,
+                    "behavior": behavior,
+                    "confidence": confidence,
+                    "weapons": weapons,
+                    "location": location_data,
+                    "timestamp": time.time()
+                })
+
+                # Send to Telegram with evidence image
+                if self._telegram_service:
+                    asyncio.create_task(
+                        self._telegram_service.send_video_alert(
+                            agent_id=agent_id,
+                            behavior=behavior,
+                            confidence=confidence,
+                            weapons=weapons,
+                            photo_bytes=annotated_frame,
+                            location_data=location_data
+                        )
+                    )
+
+            # 5. Multi-agent Correlation
             if behavior and behavior != "NonViolence" and correlation_engine:
                 lat = frame.metadata.get("gps", {}).get("lat")
                 lng = frame.metadata.get("gps", {}).get("lng")
@@ -398,6 +450,20 @@ class ConnectionManager:
                     )
         except Exception as e:
             logger.error(f"Error handling video clip from {agent_id}: {e}")
+
+    async def _fetch_agent_location(self, agent_id: str) -> dict | None:
+        """Fetch the latest GPS coordinates for an agent from the DB."""
+        try:
+            from nisha.infrastructure.database.repositories.agent_repo import SqlAlchemyAgentRepository
+            from nisha.infrastructure.database.session import async_session_factory
+            async with async_session_factory() as session:
+                repo = SqlAlchemyAgentRepository(session)
+                agent = await repo.get_by_id(agent_id)
+                if agent and agent.gps_lat is not None and agent.gps_lng is not None:
+                    return {"lat": agent.gps_lat, "lng": agent.gps_lng}
+        except Exception as e:
+            logger.warning("Could not fetch location for agent %s: %s", agent_id, e)
+        return None
 
     async def broadcast(self, message: dict[str, Any]) -> None:
         await self.broadcast_to_topic("all", message)
@@ -500,6 +566,12 @@ class ConnectionManager:
                         wav_payload = wav_header + frame.payload
                         encoded_audio = base64.b64encode(wav_payload).decode('utf-8')
                     
+                    # Cache the WAV-wrapped audio for potential Telegram alerts
+                    if frame.metadata.get('format') == 'aac':
+                        self._recent_audio_cache[agent_id] = frame.payload
+                    else:
+                        self._recent_audio_cache[agent_id] = wav_payload
+
                     # 3. Persistence - Only save to DB if it's a meaningful event (not ambient)
                     if db_writer and classification != "AmbientNoise":
                         import uuid
