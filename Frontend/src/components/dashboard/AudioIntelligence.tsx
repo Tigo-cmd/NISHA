@@ -46,7 +46,7 @@ export function AudioIntelligence() {
             nextStartTimeRef.current = audioContextRef.current.currentTime;
         }
 
-        const unsubAudio = websocketService.subscribe("AUDIO_FRAME", (data: any) => {
+        const unsubAudio = websocketService.subscribe(WebSocketMessageType.AUDIO_FRAME, async (data: any) => {
             if (!isListening || !audioContextRef.current || data.agent_id !== selectedAgentId) return;
 
             try {
@@ -57,15 +57,39 @@ export function AudioIntelligence() {
                     bytes[i] = binaryString.charCodeAt(i);
                 }
 
-                // Convert PCM16 to Float32
-                const pcm16 = new Int16Array(bytes.buffer);
-                const float32 = new Float32Array(pcm16.length);
-                for (let i = 0; i < pcm16.length; i++) {
-                    float32[i] = pcm16[i] / 32768.0;
-                }
+                let audioBuffer: AudioBuffer;
 
-                const audioBuffer = audioContextRef.current.createBuffer(1, float32.length, 16000);
-                audioBuffer.getChannelData(0).set(float32);
+                if (data.format === 'aac') {
+                    // Browser native decode for AAC/M4A streams
+                    // Create a copy of the buffer since decodeAudioData detaches the ArrayBuffer
+                    const bufferCopy = bytes.buffer.slice(0);
+                    audioBuffer = await audioContextRef.current.decodeAudioData(bufferCopy);
+                } else {
+                    // Detect WAV header (starts with "RIFF") and skip it
+                    let pcmOffset = 0;
+                    if (bytes.length > 44 &&
+                        bytes[0] === 0x52 && bytes[1] === 0x49 &&  // "RI"
+                        bytes[2] === 0x46 && bytes[3] === 0x46) {  // "FF"
+                        pcmOffset = 44; // Standard WAV header size
+                    }
+
+                    // Ensure even byte count for Int16Array alignment
+                    let pcmBytes = bytes.subarray(pcmOffset);
+                    if (pcmBytes.length < 2) return;
+                    if (pcmBytes.length % 2 !== 0) {
+                        pcmBytes = pcmBytes.subarray(0, pcmBytes.length - 1);
+                    }
+
+                    // Convert PCM16 to Float32
+                    const pcm16 = new Int16Array(pcmBytes.buffer, pcmBytes.byteOffset, pcmBytes.length / 2);
+                    const float32 = new Float32Array(pcm16.length);
+                    for (let i = 0; i < pcm16.length; i++) {
+                        float32[i] = pcm16[i] / 32768.0;
+                    }
+
+                    audioBuffer = audioContextRef.current.createBuffer(1, float32.length, 16000);
+                    audioBuffer.getChannelData(0).set(float32);
+                }
 
                 const source = audioContextRef.current.createBufferSource();
                 source.buffer = audioBuffer;
