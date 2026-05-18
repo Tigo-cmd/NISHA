@@ -45,6 +45,10 @@ dependencies = [
 
     # System Monitor
     "psutil>=5.9.0",
+
+    # Telegram & HTTP
+    "python-telegram-bot>=21.0",
+    "aiohttp>=3.9.0",
 ]
 
 [project.optional-dependencies]
