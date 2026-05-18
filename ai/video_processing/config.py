@@ -38,3 +38,13 @@ LABEL_MAP = {"NonViolence": 0, "Violence": 1}
 # Inference
 CONFIDENCE_THRESHOLD = 0.6
 SLIDING_WINDOW_STRIDE = 10
+
+# Weapons Detection
+WEAPONS_MODEL = "/home/nisha/Desktop/NISHA/ai/weapons_detector/runs/detect/weapons_detector-2/weights/best.pt"
+WEAPON_CONFIDENCE_THRESHOLD = 0.5
+THREAT_CLASSES = [
+    "Guns", "Heavy Gun", "Knife", "Knife_Deploy", "Knife_Weapon", 
+    "Long guns", "Pistol", "Rifle", "Shotgun", "handgun", 
+    "heavyweapon", "larga", "pistol", "pistols", "rifle", 
+    "shotgun", "violence", "weapon"
+]
