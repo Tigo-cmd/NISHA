@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 # Resolve the path relative to this file so it works regardless of cwd
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-YAMNET_MODEL_DIR = os.path.join(_THIS_DIR, "yamnet_model")
+YAMNET_MODEL_DIR = os.path.join(_THIS_DIR, "yamnet-tensorflow2-yamnet-v1")
 YAMNET_CLASS_MAP = os.path.join(YAMNET_MODEL_DIR, "assets", "yamnet_class_map.csv")
 
 
@@ -112,8 +112,10 @@ class YAMNetClassifier:
         logger.info("Loading YAMNet from local SavedModel: %s", YAMNET_MODEL_DIR)
         try:
             import tensorflow as tf
+            # Force CPU — YAMNet is lightweight and avoids CUDA driver mismatch
+            tf.config.set_visible_devices([], 'GPU')
             self.model = tf.saved_model.load(YAMNET_MODEL_DIR)
-            logger.info("YAMNet loaded successfully (offline).")
+            logger.info("YAMNet loaded successfully (CPU mode).")
         except Exception as e:
             logger.error("Failed to load YAMNet from %s: %s", YAMNET_MODEL_DIR, e)
             self.model = None
