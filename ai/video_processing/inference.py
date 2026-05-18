@@ -26,6 +26,9 @@ from config import (
     SEQUENCE_LENGTH,
     SLIDING_WINDOW_STRIDE,
     YOLO_MODEL,
+    WEAPONS_MODEL,
+    WEAPON_CONFIDENCE_THRESHOLD,
+    THREAT_CLASSES
 )
 from model import BehaviorLSTM
 
@@ -40,20 +43,26 @@ class DetectionResult:
     timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     keypoints: np.ndarray | None = None
     frame_index: int = 0
+    weapons: list[dict] = field(default_factory=list)  # Added for weapons detection
 
 
-class ViolenceDetector:
+class UnifiedThreatDetector:
     def __init__(
         self,
         model_path: str | Path | None = None,
         yolo_model: str = YOLO_MODEL,
+        weapons_model: str = WEAPONS_MODEL,
         device: str | None = None,
     ):
         self.device = torch.device(
             device or ("cuda" if torch.cuda.is_available() else "cpu")
         )
 
+        # Pose model for behavior
         self.yolo = YOLO(yolo_model)
+        
+        # Detection model for weapons
+        self.weapons_yolo = YOLO(weapons_model)
 
         self.lstm = BehaviorLSTM().to(self.device)
         ckpt_path = model_path or (MODEL_DIR / "best_behavior_lstm.pt")
@@ -64,30 +73,59 @@ class ViolenceDetector:
         self.keypoint_buffer: deque[np.ndarray] = deque(maxlen=SEQUENCE_LENGTH)
         self._frame_count = 0
 
-    def process_frame(self, frame: np.ndarray, imgsz: int = IMG_SIZE) -> tuple[DetectionResult | None, any]:
-        """Process a single frame. Returns (behavior_result, yolo_result)."""
-        # Run YOLO inference explicitly on the correct device
-        results = self.yolo(frame, imgsz=imgsz, device=self.device, verbose=False)
-        result = results[0]
+    def process_frame(self, frame: np.ndarray, imgsz: int = IMG_SIZE) -> tuple[DetectionResult | None, any, any]:
+        """Process a single frame. Returns (threat_result, pose_result, weapon_result)."""
+        # 1. Behavior Analysis (YOLO Pose)
+        pose_results = self.yolo(frame, imgsz=imgsz, device=self.device, verbose=False)
+        pose_result = pose_results[0]
         
-        # Extract normalized keypoints for the LSTM
-        kps_flat = self._extract_keypoints_from_result(result)
+        kps_flat = self._extract_keypoints_from_result(pose_result)
         self.keypoint_buffer.append(kps_flat)
         self._frame_count += 1
+
+        # 2. Weapons Detection (YOLO Detect) - Temporal Sampling: Every 3rd frame to save GPU
+        weapon_result = None
+        detected_weapons = []
+        if self._frame_count % 3 == 0:
+            weapon_results = self.weapons_yolo(frame, imgsz=320, device=self.device, verbose=False)
+            weapon_result = weapon_results[0]
+            
+            for box in weapon_result.boxes:
+                cls_id = int(box.cls[0])
+                cls_name = weapon_result.names[cls_id]
+                conf = float(box.conf[0])
+                
+                if cls_name in THREAT_CLASSES and conf >= WEAPON_CONFIDENCE_THRESHOLD:
+                    detected_weapons.append({
+                        "class": cls_name,
+                        "confidence": conf,
+                        "box": box.xyxy[0].cpu().numpy().tolist()
+                    })
 
         # Check for behavior classification
         behavior_result = None
         if len(self.keypoint_buffer) >= SEQUENCE_LENGTH and (self._frame_count - SEQUENCE_LENGTH) % SLIDING_WINDOW_STRIDE == 0:
             sequence = np.array(self.keypoint_buffer)
             behavior, confidence = self._classify_sequence(sequence)
+            
+            # Combine results
             behavior_result = DetectionResult(
                 behavior=behavior,
                 confidence=confidence,
                 keypoints=kps_flat,
                 frame_index=self._frame_count,
+                weapons=detected_weapons
+            )
+        elif detected_weapons:
+            # If only weapons detected, still return a result
+            behavior_result = DetectionResult(
+                behavior="NonViolence", # Default behavior if not enough frames for LSTM
+                confidence=0.0,
+                frame_index=self._frame_count,
+                weapons=detected_weapons
             )
 
-        return behavior_result, result
+        return behavior_result, pose_result, weapon_result
 
     def _extract_keypoints_from_result(self, result) -> np.ndarray:
         """Isolated keypoint extraction from a single YOLO result."""
@@ -167,7 +205,7 @@ class ViolenceDetector:
             if not ret:
                 break
 
-            detection = self.process_frame(frame)
+            detection, _, _ = self.process_frame(frame)
             if detection and detection.confidence >= CONFIDENCE_THRESHOLD:
                 results.append(detection)
                 log.info(
@@ -208,7 +246,7 @@ def main():
     args = parser.parse_args()
 
     source = int(args.source) if args.source.isdigit() else args.source
-    detector = ViolenceDetector(model_path=args.model)
+    detector = UnifiedThreatDetector(model_path=args.model)
     results = detector.process_video(source=source, show=args.show)
 
     log.info("Total detections: %d", len(results))
