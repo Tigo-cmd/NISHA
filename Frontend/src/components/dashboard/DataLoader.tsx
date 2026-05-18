@@ -18,11 +18,16 @@ const mapBackendAgent = (backendAgent: any): StoreAgent => {
                    (backendAgent.hardware_type === 'MOBILE' ? 'MOBILE' : 
                     (isMac || isNode) ? 'HARDWARE' : 'MOBILE');
                     
+    const rawStatus = (backendAgent.status || "offline").toLowerCase();
+    const mappedStatus = (rawStatus === "active" || rawStatus === "degraded" || rawStatus === "offline") 
+        ? rawStatus 
+        : "offline";
+
   return {
     id: backendAgent.agent_id || backendAgent.short_id,
     name: backendAgent.short_id || "Unknown",
     masterId: backendAgent.master_id || "",
-    status: (backendAgent.status || "offline").toLowerCase() as any,
+    status: mappedStatus as "active" | "degraded" | "offline",
     battery: backendAgent.config?.battery_level || 100, // Mock fallback
     signal: backendAgent.config?.signal_strength || -50,
     zone: backendAgent.location_zone || "Unassigned",
@@ -98,7 +103,7 @@ export function DataLoader() {
             const lastSeenDate = new Date(current.lastSeen);
             const now = new Date();
             if (now.getTime() - lastSeenDate.getTime() < 45000) {
-              return { ...mapped, status: 'active', lastSeen: current.lastSeen };
+              return { ...mapped, status: 'active' as const, lastSeen: current.lastSeen };
             }
           }
           return mapped;
