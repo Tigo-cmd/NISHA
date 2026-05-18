@@ -231,7 +231,8 @@ class ConnectionManager:
                         "type": "AUDIO_FRAME",
                         "agent_id": agent_id,
                         "timestamp": time.time(),
-                        "audio": base64.b64encode(frame.payload).decode('utf-8')
+                        "audio": base64.b64encode(frame.payload).decode('utf-8'),
+                        "format": frame.metadata.get("format", "pcm")
                     }))
 
                 asyncio.create_task(self.broadcast(telemetry))
