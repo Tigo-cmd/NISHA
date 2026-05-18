@@ -3,6 +3,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import AgoraRTC, { IRemoteVideoTrack, IRemoteAudioTrack, IAgoraRTCClient } from "agora-rtc-sdk-ng";
 import { apiService } from "@/services/apiService";
+import { websocketService } from "@/services/websocketService";
+import { WebSocketMessageType } from "@/types";
 import { WaveformVisualizer } from "./WaveformVisualizer";
 
 interface AgoraVideoPlayerProps {
@@ -21,6 +23,7 @@ export const AgoraVideoPlayer: React.FC<AgoraVideoPlayerProps> = ({ channelName,
     const [volume, setVolume] = useState(100);
     const [isPaused, setIsPaused] = useState(false);
     const [audioLevel, setAudioLevel] = useState(0);
+    const [activeThreats, setActiveThreats] = useState<any[]>([]);
 
     useEffect(() => {
         if (!channelName) return;
@@ -124,6 +127,23 @@ export const AgoraVideoPlayer: React.FC<AgoraVideoPlayerProps> = ({ channelName,
     }, [isMuted, isPaused, audioTrack, volume]);
 
     useEffect(() => {
+        if (!websocketService) return;
+
+        const unsubscribe = websocketService.subscribe(
+            WebSocketMessageType.WEAPON_THREAT_EVENT, 
+            (data: any) => {
+                if (data.agent_id === agentId && data.weapons && data.weapons.length > 0) {
+                    setActiveThreats(data.weapons);
+                    // Clear threats after 2 seconds if no new detection comes in
+                    setTimeout(() => setActiveThreats([]), 2000);
+                }
+            }
+        );
+
+        return () => unsubscribe();
+    }, [agentId]);
+
+    useEffect(() => {
         if (!audioTrack || isMuted || isPaused) {
             setAudioLevel(0);
             return;
@@ -165,6 +185,38 @@ export const AgoraVideoPlayer: React.FC<AgoraVideoPlayerProps> = ({ channelName,
     return (
         <div className="relative w-full aspect-video bg-black rounded-lg overflow-hidden border border-foreground/10 group">
             <div ref={containerRef} className="w-full h-full" />
+            
+            {/* AI Threat Overlays */}
+            {activeThreats.map((threat, index) => {
+                // YOLO boxes are often normalized or absolute depending on the stream
+                // For Agora, we assume the AI is processing at 320x240 or 640x480
+                // We map these to percentage for CSS placement
+                const box = threat.box;
+                if (!box) return null;
+                
+                const left = (box[0] / 320) * 100;
+                const top = (box[1] / 240) * 100;
+                const width = ((box[2] - box[0]) / 320) * 100;
+                const height = ((box[3] - box[1]) / 240) * 100;
+
+                return (
+                    <div 
+                        key={index}
+                        className="absolute border-2 border-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)] pointer-events-none z-20"
+                        style={{
+                            left: `${left}%`,
+                            top: `${top}%`,
+                            width: `${width}%`,
+                            height: `${height}%`,
+                            transition: 'all 0.1s ease-out'
+                        }}
+                    >
+                        <div className="absolute -top-6 left-0 bg-red-500 text-white text-[10px] font-bold px-1 py-0.5 whitespace-nowrap rounded-t">
+                            {threat.class.toUpperCase()} {(threat.confidence * 100).toFixed(0)}%
+                        </div>
+                    </div>
+                );
+            })}
             
             {/* Overlay */}
             <div className="absolute top-4 inset-x-4 flex items-start justify-between pointer-events-none">
