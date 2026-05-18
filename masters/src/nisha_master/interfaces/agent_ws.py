@@ -227,7 +227,7 @@ class AgentWebSocketServer:
                                 frame_meta = json.loads(bytes(view[HEADER_SIZE : HEADER_SIZE + meta_len]).decode('utf-8'))
                             except: pass
                         
-                        # 1. Basic VAD and Local Dashboard Stats
+                        # 1. Basic VAD and Local Dashboard Stats (PCM only — AAC bypasses local classifier)
                         has_speech = False
                         if self.audio_classifier and frame_meta.get('format') != 'aac':
                             classification, confidence, _ = self.audio_classifier.process_audio(payload)
@@ -238,27 +238,28 @@ class AgentWebSocketServer:
                             else:
                                 stats["is_speaking"] = False
 
-                        # 2. Real-time Streaming Logic
-                        if frame_meta.get('format') != 'aac':
+                        # 2. Real-time Streaming to AI Processor
+                        if frame_meta.get('format') == 'aac':
+                            # Mobile sends compressed AAC — decode to PCM16 before forwarding
+                            asyncio.create_task(self._transcode_and_stream(agent_id, payload))
+                        else:
+                            # Raw PCM16 from hardware agents — stream directly
                             if agent_id not in self.ai_connections and agent_id not in self.ai_pending:
                                 self.ai_pending.add(agent_id)
                                 asyncio.create_task(self._init_ai_stream(agent_id))
-                            
-                            # Send raw audio immediately to the AI Brain
                             await self._stream_to_ai(agent_id, payload)
 
-                        # 3. Legacy Dashboard Updates
+                        # 3. Dashboard Updates
                         if frame_meta.get('format') == 'aac':
                             stats["latest_audio"] = base64.b64encode(payload).decode('utf-8')
                             stats["_audio_mime"] = "audio/m4a"
                         else:
-                            # Pulse data for dashboard
                             stats["latest_audio"] = base64.b64encode(payload).decode('utf-8')
                             stats["_audio_mime"] = "audio/pcm"
                             stats["is_live_audio"] = True
-                            
+
                         stats["audio_updated_at"] = time.time()
-                        print(f"[DEBUG] Received AUDIO from {agent_id}: {len(payload)} bytes (Speech: {has_speech})")
+                        print(f"[DEBUG] Received AUDIO from {agent_id}: {len(payload)} bytes (format: {frame_meta.get('format','pcm')}, Speech: {has_speech})")
 
                     elif stream_type == 0x04: # LOCATION
                         payload = bytes(view[HEADER_SIZE + meta_len : HEADER_SIZE + meta_len + payload_len])
@@ -374,6 +375,61 @@ class AgentWebSocketServer:
                 await ws.send(audio_data)
             except:
                 self.ai_connections.pop(agent_id, None)
+
+    async def _transcode_and_stream(self, agent_id: str, aac_bytes: bytes):
+        """
+        Decode AAC/M4A bytes → 16kHz mono PCM16 using ffmpeg, then stream
+        the raw PCM to the AI processor for transcription and YAMNet analysis.
+        """
+        import asyncio.subprocess as asp
+        import tempfile, os
+
+        if not aac_bytes:
+            return
+
+        try:
+            # Write AAC payload to a temp file so ffmpeg can read it
+            with tempfile.NamedTemporaryFile(suffix='.m4a', delete=False) as tmp_in:
+                tmp_in.write(aac_bytes)
+                tmp_in_path = tmp_in.name
+
+            # Run ffmpeg: AAC/M4A → raw PCM16 LE @ 16kHz mono
+            proc = await asp.create_subprocess_exec(
+                'ffmpeg', '-y',
+                '-i', tmp_in_path,
+                '-ar', '16000',      # 16kHz sample rate (what AI expects)
+                '-ac', '1',          # Mono
+                '-f', 's16le',       # Raw signed 16-bit little-endian PCM
+                'pipe:1',            # Output to stdout
+                stdout=asp.PIPE,
+                stderr=asp.DEVNULL
+            )
+            pcm_data, _ = await proc.communicate()
+            os.unlink(tmp_in_path)
+
+            if not pcm_data:
+                logger.warning(f"[AAC Transcode] No PCM output for {agent_id}")
+                return
+
+            logger.debug(f"[AAC Transcode] {agent_id}: {len(aac_bytes)}B AAC → {len(pcm_data)}B PCM")
+
+            # Ensure AI stream is open then forward PCM
+            if agent_id not in self.ai_connections and agent_id not in self.ai_pending:
+                self.ai_pending.add(agent_id)
+                asyncio.create_task(self._init_ai_stream(agent_id))
+
+            # Wait briefly for the connection to establish if it just started
+            for _ in range(10):
+                if agent_id in self.ai_connections:
+                    break
+                await asyncio.sleep(0.1)
+
+            await self._stream_to_ai(agent_id, pcm_data)
+
+        except FileNotFoundError:
+            logger.error("[AAC Transcode] ffmpeg not found — install with: sudo apt install ffmpeg")
+        except Exception as e:
+            logger.error(f"[AAC Transcode] Error for {agent_id}: {e}")
 
     async def _relay_transcription_as_lite(self, agent_id: str, text: str, language: str,
                                             has_threat: bool = False, threat_keywords: list = None):
