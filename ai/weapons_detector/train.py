@@ -14,7 +14,7 @@ print("Starting training... Make sure you have labels ready!")
 
 results = model.train(
     data=data_path, 
-    epochs=50, 
+    epochs=100, 
     imgsz=640, 
     batch=16,
     patience=10, 
