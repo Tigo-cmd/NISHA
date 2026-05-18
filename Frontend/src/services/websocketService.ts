@@ -44,7 +44,7 @@ class WebSocketService {
           const data = raw.data !== undefined ? raw.data : raw;
           
           // Log critical alert events
-          if (type === 'AUDIO_ALERT_EVENT' || type === 'TRANSCRIPT_THREAT_EVENT' || type === 'VIDEO_VIOLENCE_EVENT') {
+          if (type === 'AUDIO_ALERT_EVENT' || type === 'TRANSCRIPT_THREAT_EVENT' || type === 'VIDEO_VIOLENCE_EVENT' || type === 'WEAPON_THREAT_EVENT') {
             console.warn(`🚨 [WS] ${type}:`, raw);
           }
           
