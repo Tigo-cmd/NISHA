@@ -159,26 +159,44 @@ class RealtimeAudioPlayer {
         this.lookahead = 0.05; // 50ms buffer
     }
 
-    playChunk(base64Data: string) {
+    async playChunk(base64Data: string, format: string = "pcm") {
         try {
             if (this.ctx.state === 'suspended') this.ctx.resume();
 
             const binary = atob(base64Data);
             const len = binary.length;
-            const validLen = len % 2 === 0 ? len : len - 1;
-            if (validLen <= 0) return;
-
-            const bytes = new Uint8Array(validLen);
-            for (let i = 0; i < validLen; i++) bytes[i] = binary.charCodeAt(i);
             
-            const int16 = new Int16Array(bytes.buffer);
-            const float32 = new Float32Array(int16.length);
-            for (let i = 0; i < int16.length; i++) {
-                float32[i] = int16[i] / 32768.0;
-            }
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+            
+            let audioBuffer: AudioBuffer;
 
-            const audioBuffer = this.ctx.createBuffer(1, float32.length, 16000);
-            audioBuffer.getChannelData(0).set(float32);
+            if (format === 'aac') {
+                const bufferCopy = bytes.buffer.slice(0);
+                audioBuffer = await this.ctx.decodeAudioData(bufferCopy);
+            } else {
+                let pcmOffset = 0;
+                if (bytes.length > 44 &&
+                    bytes[0] === 0x52 && bytes[1] === 0x49 &&
+                    bytes[2] === 0x46 && bytes[3] === 0x46) {
+                    pcmOffset = 44;
+                }
+
+                let pcmBytes = bytes.subarray(pcmOffset);
+                if (pcmBytes.length < 2) return;
+                if (pcmBytes.length % 2 !== 0) {
+                    pcmBytes = pcmBytes.subarray(0, pcmBytes.length - 1);
+                }
+
+                const int16 = new Int16Array(pcmBytes.buffer, pcmBytes.byteOffset, pcmBytes.length / 2);
+                const float32 = new Float32Array(int16.length);
+                for (let i = 0; i < int16.length; i++) {
+                    float32[i] = int16[i] / 32768.0;
+                }
+
+                audioBuffer = this.ctx.createBuffer(1, float32.length, 16000);
+                audioBuffer.getChannelData(0).set(float32);
+            }
 
             const source = this.ctx.createBufferSource();
             source.buffer = audioBuffer;
@@ -245,7 +263,7 @@ function AudioTab({ agent }: { agent: Agent }) {
         const unsubAudioFrame = websocketService.subscribe(WebSocketMessageType.AUDIO_FRAME, (data: any) => {
             if (data && data.agent_id === agent.id && data.audio) {
                 if (playerRef.current) {
-                    playerRef.current.playChunk(data.audio);
+                    playerRef.current.playChunk(data.audio, data.format);
                 }
             }
         });
