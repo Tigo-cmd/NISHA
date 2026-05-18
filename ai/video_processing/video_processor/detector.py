@@ -12,7 +12,7 @@ video_processing_dir = project_root / "ai" / "video_processing"
 sys.path.append(str(project_root))
 sys.path.append(str(video_processing_dir))
 
-from ai.video_processing.inference import ViolenceDetector
+from ai.video_processing.inference import UnifiedThreatDetector
 from ai.video_processing.config import YOLO_MODEL, CONFIDENCE_THRESHOLD
 
 try:
@@ -64,7 +64,7 @@ def run_detection(source, show=True, save_path=None, fast_mode=False, nano_model
         logger.info("Downloading Nano Pose model for better performance...")
     
     logger.info(f"Loading models (Fast Mode: {fast_mode})...")
-    detector = ViolenceDetector(model_path=model_path, yolo_model=str(yolo_weight))
+    detector = UnifiedThreatDetector(model_path=model_path, yolo_model=str(yolo_weight))
 
     # Optimization: Lower image size for much higher FPS
     imgsz = 320 if fast_mode else 640
@@ -94,7 +94,7 @@ def run_detection(source, show=True, save_path=None, fast_mode=False, nano_model
                 break
 
             # Process frame with optimized size
-            detection, yolo_result = detector.process_frame(frame, imgsz=imgsz)
+            detection, yolo_result, weapon_result = detector.process_frame(frame, imgsz=imgsz)
             
             annotated_frame = yolo_result.plot()
 # ... (rest of the visualization logic remains)
