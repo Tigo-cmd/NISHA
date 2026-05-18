@@ -101,7 +101,7 @@ export function GoogleMapView({
                                 >
                                     {marker.type === 'master' ? (
                                         <div className="flex flex-col items-center">
-                                            <div style={{ width: 24, height: 24, backgroundColor: '#1a1a2e', border: `2px solid ${markerColor}`, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyInContent: 'center', boxShadow: `0 0 10px ${markerColor}80` }}>
+                                            <div style={{ width: 24, height: 24, backgroundColor: '#1a1a2e', border: `2px solid ${markerColor}`, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 0 10px ${markerColor}80` }}>
                                                 <span style={{ color: '#e0e0e0', fontSize: 10, fontWeight: 'bold', fontFamily: 'monospace' }}>M</span>
                                             </div>
                                         </div>
