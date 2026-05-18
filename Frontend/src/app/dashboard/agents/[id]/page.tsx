@@ -76,6 +76,7 @@ export default function AgentDetailPage() {
         temp: 0,
         masterId: "",
         capabilities: [] as string[],
+        agentType: "HARDWARE" as const,
     };
 
     return (
