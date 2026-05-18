@@ -18,8 +18,8 @@ if str(ai_dir) not in sys.path:
     sys.path.append(str(ai_dir))
 
 try:
-    from ai.video_processing.inference import ViolenceDetector
-    from ai.video_processing.config import YOLO_MODEL, CONFIDENCE_THRESHOLD
+    from ai.video_processing.inference import UnifiedThreatDetector
+    from ai.video_processing.config import YOLO_MODEL, CONFIDENCE_THRESHOLD, WEAPON_CONFIDENCE_THRESHOLD, THREAT_CLASSES
     from ai.audio_processor.processor import AudioClassifier
     AI_AVAILABLE = True
 except ImportError as e:
@@ -29,7 +29,7 @@ except ImportError as e:
         sys.path.append(str(project_root))
         try:
             from ai.audio_processor.processor import AudioClassifier
-            from ai.video_processing.inference import ViolenceDetector
+            from ai.video_processing.inference import UnifiedThreatDetector
             AI_AVAILABLE = True
         except:
             AI_AVAILABLE = False
@@ -42,7 +42,7 @@ class AIProcessor:
     """Service to handle AI inference for video and audio streams."""
     
     def __init__(self, use_nano: bool = True):
-        self.detector: Optional[ViolenceDetector] = None
+        self.detector: Optional[UnifiedThreatDetector] = None
         self.audio_classifier: Optional[AudioClassifier] = None
         self.use_nano = use_nano
         self.executor = ThreadPoolExecutor(max_workers=4)
@@ -61,7 +61,7 @@ class AIProcessor:
             yolo_weight = ai_dir / yolo_name
             
             logger.info(f"Loading AI models: YOLO={yolo_name}, LSTM={model_path.name}")
-            self.detector = ViolenceDetector(
+            self.detector = UnifiedThreatDetector(
                 model_path=model_path, 
                 yolo_model=str(yolo_weight)
             )
@@ -73,10 +73,10 @@ class AIProcessor:
         except Exception as e:
             logger.error(f"Error loading AI models: {e}")
 
-    async def process_video_frame(self, frame_data: bytes, metadata: dict = None) -> Tuple[Optional[str], float]:
-        """Process a raw video frame (bytes) and return (behavior, confidence)."""
+    async def process_video_frame(self, frame_data: bytes, metadata: dict = None) -> Tuple[Optional[str], float, list, Optional[bytes]]:
+        """Process a raw video frame (bytes) and return (behavior, confidence, weapons, annotated_frame)."""
         if not self.detector:
-            return None, 0.0
+            return None, 0.0, [], None
 
         # Run in thread pool as CV2 and Torch operations are blocking
         return await asyncio.get_event_loop().run_in_executor(
@@ -128,18 +128,45 @@ class AIProcessor:
                             os.remove(tmp_path)
 
             if frame is None:
-                return None, 0.0
+                return None, 0.0, [], None
                 
-            # Process using ViolenceDetector
-            detection, _ = self.detector.process_frame(frame, imgsz=320)
+            # Process using UnifiedThreatDetector
+            detection, pose_result, weapon_result = self.detector.process_frame(frame, imgsz=320)
             
+            behavior = "NonViolence"
+            confidence = 1.0
+            weapons = []
+            annotated_frame_bytes = None
+
             if detection:
-                return detection.behavior, detection.confidence
+                behavior = detection.behavior
+                confidence = detection.confidence
+                weapons = detection.weapons
+            
+            # If a threat is found, annotate the frame for Telegram/Evidence
+            is_threat = (behavior != "NonViolence" and confidence >= CONFIDENCE_THRESHOLD) or len(weapons) > 0
+            
+            if is_threat:
+                # Use YOLO's built-in plotting for a professional look
+                # Combine pose and weapons plotting if available
+                annotated_frame = pose_result.plot()
                 
-            return "NonViolence", 1.0
+                # Manually draw weapons boxes if they were detected in this frame
+                if weapons:
+                    for w in weapons:
+                        box = w['box']
+                        cv2.rectangle(annotated_frame, (int(box[0]), int(box[1])), (int(box[2]), int(box[3])), (0, 0, 255), 2)
+                        cv2.putText(annotated_frame, f"{w['class']} {w['confidence']:.1%}", 
+                                    (int(box[0]), int(box[1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+
+                # Encode to JPEG for transfer
+                _, buffer = cv2.imencode('.jpg', annotated_frame)
+                annotated_frame_bytes = buffer.tobytes()
+
+            return behavior, confidence, weapons, annotated_frame_bytes
         except Exception as e:
             logger.error(f"Error processing visual data: {e}")
-            return None, 0.0
+            return None, 0.0, [], None
 
     async def process_audio_frame(self, audio_data: bytes, metadata: dict = None) -> tuple[str, float, Optional[str]]:
         """Process audio bytes and return (classification, confidence, transcription)."""
