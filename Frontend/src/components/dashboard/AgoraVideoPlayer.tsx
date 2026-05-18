@@ -35,7 +35,7 @@ export const AgoraVideoPlayer: React.FC<AgoraVideoPlayerProps> = ({ channelName,
                 const data = await apiService.getAgoraToken(channelName, masterUrl);
                 if (!isMounted) return;
 
-                if (data.error) {
+                if ('error' in data) {
                     setStatus(`Token Error: ${data.error}`);
                     return;
                 }
