@@ -20,7 +20,7 @@ def run_prediction(model_path, source):
 if __name__ == "__main__":
     # Path to your best model weights after training
     # Default location is usually runs/detect/weapons_detector/weights/best.pt
-    best_model = "runs/detect/weapons_detector/weights/best.pt"
+    best_model = "/home/nisha/Desktop/NISHA/ai/weapons_detector/runs/detect/weapons_detector-2/weights/best.pt"
     
     # Use webcam by default, or provide a path via argument
     source = sys.argv[1] if len(sys.argv) > 1 else 0
